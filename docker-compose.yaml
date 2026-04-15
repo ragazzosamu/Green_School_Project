@@ -1,0 +1,41 @@
+services:
+  mariadb:
+    image: mariadb:10.11 # immagine ufficiale di mariadb
+    container_name: green_db
+    ports:
+      - "3306:3306" # mappatura porte
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: db_green_school
+      MYSQL_USER: admin
+      MYSQL_PASSWORD: password
+    volumes:
+      - ./docker-data/mysql:/var/lib/mysql
+    networks:
+      - green-network
+
+  app:
+    image: chialab/php:8.3-apache
+    container_name: green_app
+    ports:
+      - "80:80"     # Porta per il sito web (HTTP)
+      - "8080:8080" # Porta per i WebSocket (Reverb)
+    volumes:
+      - ./src:/var/www/html
+    networks: 
+      - green-network
+    depends_on:
+      - mariadb
+      - redis
+  
+  redis: 
+    image: redis:alpine
+    container_name: green_redis
+    networks:
+      - green-network
+
+networks:
+  green-network:
+    driver: bridge
+
+    
