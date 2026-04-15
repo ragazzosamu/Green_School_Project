@@ -25,18 +25,18 @@ cd Green_School_Project
 ```
 oppure usa git hub desktop
 
-# [AVVIO CONTAINER IN BACKGROUND]
+## 2. Avvio container in background
 docker-compose up -d
 
-# [INSTALLAZIONE DIPENDENZE]
+## 3. Installazione dipendenze
 docker exec -it green_app bash
 composer install
 exit
 
-# [IMPORTAZIONE DATI SQL]
+# 4. Importazione dati sql
 Get-Content database.sql | docker exec -i green_db mariadb -uadmin -ppassword db_green_school
 
-# [PARAMETRI DI CONNESSIONE DBEAVER]
+# 5. Parametri di connessione DBeaver
 Tipo: MariaDB
 Host: localhost
 Porta: 3306
@@ -44,7 +44,7 @@ Database: db_green_school
 Username: admin
 Password: password
 
-# [COMANDI DI GESTIONE]
+## Comandi di gestione
 docker-compose stop      # Ferma i container (senza eliminarli)
 docker-compose down      # Spegne e rimuove i container
 docker logs -f green_app # Visualizza gli errori PHP in tempo reale
