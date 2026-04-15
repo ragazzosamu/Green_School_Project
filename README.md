@@ -26,15 +26,21 @@ cd Green_School_Project
 oppure usa git hub desktop
 
 ## 2. Avvio container in background
+```bash
 docker-compose up -d
+```
 
 ## 3. Installazione dipendenze
+```bash
 docker exec -it green_app bash
 composer install
 exit
+```
 
 # 4. Importazione dati sql
+```bash
 Get-Content database.sql | docker exec -i green_db mariadb -uadmin -ppassword db_green_school
+```
 
 # 5. Parametri di connessione DBeaver
 Tipo: MariaDB
