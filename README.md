@@ -43,14 +43,16 @@ Get-Content database.sql | docker exec -i green_db mariadb -uadmin -ppassword db
 ```
 
 # 5. Parametri di connessione DBeaver
-Tipo: MariaDB
-Host: localhost
-Porta: 3306
-Database: db_green_school
-Username: admin
-Password: password
+ - Tipo: MariaDB
+ - Host: localhost
+ - Porta: 3306
+ - Database: db_green_school
+ - Username: admin
+ - Password: password
 
 ## Comandi di gestione
+```bash
 docker-compose stop      # Ferma i container (senza eliminarli)
 docker-compose down      # Spegne e rimuove i container
 docker logs -f green_app # Visualizza gli errori PHP in tempo reale
+```
