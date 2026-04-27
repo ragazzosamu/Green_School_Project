@@ -14,14 +14,16 @@ services:
     networks:
       - green-network
 
+
   app:
     image: chialab/php:8.3-apache
     container_name: green_app
     ports:
-      - "80:80"     # Porta per il sito web (HTTP)
-      - "8080:8080" # Porta per i WebSocket (Reverb)
+      - "80:80"
+      - "8080:8080"
     volumes:
       - ./src:/var/www/html
+      - ./vhost.conf:/etc/apache2/sites-available/000-default.conf
     networks: 
       - green-network
     depends_on:
