@@ -43,7 +43,7 @@ Get-Content database.sql | docker exec -i green_db mariadb -uadmin -ppassword db
 ```
 
 # 5. Parametri di connessione DBeaver
- - Tipo: MariaDB
+ - Tipo: MySql
  - Host: localhost
  - Porta: 3306
  - Database: db_green_school
