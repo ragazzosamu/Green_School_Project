@@ -50,6 +50,9 @@ Get-Content database.sql | docker exec -i green_db mariadb -uadmin -ppassword db
  - Username: admin
  - Password: password
 
+# 6. Configurazione file .env
+rinominate il file .env.example in .env
+
 ## Comandi di gestione
 ```bash
 docker-compose stop      # Ferma i container (senza eliminarli)
