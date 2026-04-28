@@ -17,7 +17,13 @@ class Utenti extends Model
     public $timestamps = false;
 
     protected $fillable = [
-        'id_utente', 'email', 'cellulare', 'nome', 'cognome', 'tipo_account', 'attivo'
+        'id_utente', 
+        'email',
+        'cellulare',
+        'nome',
+        'cognome',
+        'tipo_account',
+        'attivo'
     ]; //dati personali e tipo di account (per capire se è un dipendente della scuola o uno studente)
 
     public function sessioni() {

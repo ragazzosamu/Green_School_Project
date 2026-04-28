@@ -2,7 +2,7 @@
 
 namespace Database\Seeders;
 
-use App\Models\User;
+
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 
@@ -15,11 +15,18 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // User::factory(10)->create();
+        // 1. Crea le basi
+        \App\Models\Utenti::factory(10)->create();
+        \App\Models\Stazioni::factory(5)->create();
 
-        User::factory()->create([
-            'name' => 'Test User',
-            'email' => 'test@example.com',
-        ]);
+        // 2. Crea i rami (dipendono dalle basi)
+        \App\Models\Badge_utente::factory(10)->create();
+        \App\Models\Accumulatori_stazione::factory(5)->create();
+        \App\Models\Punti_ricarica::factory(15)->create();
+
+        // 3. Crea i frutti (dipendono da tutto il resto)
+        // Ora basta chiamare create() senza parametri!
+        \App\Models\Sessioni_ricarica::factory(30)->create();
+        \App\Models\StoricoLivelloBatteria::factory(100)->create();
     }
 }

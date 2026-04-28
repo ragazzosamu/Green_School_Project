@@ -16,7 +16,12 @@ class Stazioni extends Model
     public $timestamps = false;
 
     protected $fillable = [
-        'id_stazione', 'nome', 'indirizzo', 'latitudine', 'longitudine', 'tipo_area'
+        'id_stazione', 
+        'nome', 
+        'indirizzo', 
+        'latitudine', 
+        'longitudine', 
+        'tipo_area'
     ]; //info generali sulla stazione: il nome della zona e le coordinate geografiche per trovarla sulla mappa
 
     public function puntiRicarica() {

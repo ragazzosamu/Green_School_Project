@@ -29,7 +29,7 @@ return new class extends Migration
             $table->text('indirizzo')->nullable(); // Indirizzo fisico completo
             $table->decimal('latitudine', 10, 8); // Coordinata GPS Lat (Precisione 8 decimali)
             $table->decimal('longitudine', 11, 8); // Coordinata GPS Lon (Precisione 8 decimali)
-            $table->point('coordinata'); // Oggetto spaziale per query geografiche (Point)
+            $table->geometry('coordinata'); // Oggetto spaziale per query geografiche (Point)
             $table->enum('tipo_area', ['pubblico', 'privato', 'aziendale'])->default('pubblico'); // Accessibilità
             $table->date('data_attivazione')->useCurrent(); // Data di messa in funzione
 

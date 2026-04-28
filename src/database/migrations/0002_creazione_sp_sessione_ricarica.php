@@ -3,16 +3,16 @@
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
 
-
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up(): void
     {
 
-        // 2. Creazione procedura VERIFICA DISPONIBILITÀ
+        DB::unprepared("DROP PROCEDURE IF EXISTS sp_verifica_disponibilita");
+        DB::unprepared("DROP PROCEDURE IF EXISTS sp_avvio_sessione");
+        DB::unprepared("DROP PROCEDURE IF EXISTS sp_termina_sessione");
+        
+        // 1. Procedura VERIFICA DISPONIBILITÀ
         DB::unprepared("
             CREATE PROCEDURE sp_verifica_disponibilita(
                 IN p_id_punto CHAR(36),
@@ -56,14 +56,14 @@ return new class extends Migration
                         SET p_disponibile = 0;
                         SET p_messaggio = CONCAT('Colonnina occupata', IF(v_occupante_nome IS NOT NULL, CONCAT(' da ', v_occupante_nome), ''));
                     ELSE
-                        p_disponibile = 1;
+                        SET p_disponibile = 1;
                         SET p_messaggio = 'Colonnina disponibile';
                     END IF;
                 END IF;
             END
         ");
 
-        // 3. Creazione procedura AVVIO SESSIONE
+        // 2. Procedura AVVIO SESSIONE
         DB::unprepared("
             CREATE PROCEDURE sp_avvio_sessione(
                 IN p_id_utente CHAR(36),
@@ -82,7 +82,7 @@ return new class extends Migration
                 BEGIN
                     ROLLBACK;
                     SET p_successo = 0;
-                    SET p_messaggio = 'Errore durante l''avvio della sessione';
+                    SET p_messaggio = 'Errore interno SQL nell''avvio';
                 END;
 
                 START TRANSACTION;
@@ -92,7 +92,8 @@ return new class extends Migration
                     SET p_successo = 0;
                     ROLLBACK;
                 ELSE
-                    SELECT (acc.percentuale_carica > acc.soglia_minima_perc OR acc.id_accumulatore IS NULL)
+                    -- Usiamo percentuale_carica che esiste nella tua tabella accumulatori_stazione
+                    SELECT (acc.percentuale_carica > 10.00 OR acc.id_accumulatore IS NULL)
                     INTO v_batteria_sufficiente
                     FROM punti_ricarica p
                     LEFT JOIN stazioni s ON p.id_stazione = s.id_stazione
@@ -101,24 +102,24 @@ return new class extends Migration
 
                     IF v_batteria_sufficiente = 0 THEN
                         SET p_successo = 0;
-                        SET p_messaggio = 'Batteria della stazione scarica. Ricarica non disponibile.';
+                        SET p_messaggio = 'Batteria stazione scarica (<10%)';
                         ROLLBACK;
                     ELSE
                         SET p_id_sessione = UUID();
                         INSERT INTO sessioni_ricarica (
-                            id_sessione, id_utente, id_punto, id_badge_usato, metodo_avvio, data_inizio
+                            id_sessione, id_utente, id_punto, id_badge_usato, metodo_avvio, data_inizio, stato_pagamento
                         ) VALUES (
-                            p_id_sessione, p_id_utente, p_id_punto, p_id_badge, p_metodo_avvio, NOW()
+                            p_id_sessione, p_id_utente, p_id_punto, p_id_badge, p_metodo_avvio, NOW(), 'non_richiesto'
                         );
                         SET p_successo = 1;
-                        SET p_messaggio = 'Sessione avviata con successo';
+                        SET p_messaggio = 'Sessione avviata';
                         COMMIT;
                     END IF;
                 END IF;
             END
         ");
 
-        // 4. Creazione procedura TERMINA SESSIONE
+        // 3. Procedura TERMINA SESSIONE
         DB::unprepared("
             CREATE PROCEDURE sp_termina_sessione(
                 IN p_id_sessione CHAR(36),
@@ -130,14 +131,11 @@ return new class extends Migration
                 DECLARE v_id_punto CHAR(36);
                 DECLARE v_tariffa DECIMAL(6,4);
                 DECLARE v_data_inizio TIMESTAMP;
-                DECLARE v_tipo_tariffa VARCHAR(30);
-                DECLARE v_stato_pagamento VARCHAR(30);
 
                 DECLARE EXIT HANDLER FOR SQLEXCEPTION
                 BEGIN
                     ROLLBACK;
                     SET p_successo = 0;
-                    SET p_costo_calcolato = 0;
                 END;
 
                 START TRANSACTION;
@@ -151,42 +149,29 @@ return new class extends Migration
                     SET p_successo = 0;
                     ROLLBACK;
                 ELSE
+                    -- Prendi tariffa da punti_ricarica
                     SELECT tariffa_predefinita INTO v_tariffa
                     FROM punti_ricarica WHERE id_punto = v_id_punto;
 
                     IF v_tariffa IS NULL THEN
+                        -- Prova a cercarla nelle tariffe orarie
                         SELECT prezzo_kwh INTO v_tariffa
                         FROM tariffe_orarie
                         WHERE id_punto = v_id_punto
-                          AND giorno_settimana = DAYOFWEEK(v_data_inizio) - 1
+                          AND giorno_settimana = (DAYOFWEEK(v_data_inizio) - 1)
                           AND TIME(v_data_inizio) BETWEEN ora_inizio AND ora_fine
-                          AND data_attivazione <= DATE(v_data_inizio)
-                          AND (data_scadenza IS NULL OR data_scadenza >= DATE(v_data_inizio))
-                        ORDER BY data_attivazione DESC
                         LIMIT 1;
-
-                        IF v_tariffa IS NULL THEN
-                            SET v_tariffa = 0.50;
-                        END IF;
+                        
+                        IF v_tariffa IS NULL THEN SET v_tariffa = 0.50; END IF;
                     END IF;
 
-                    IF v_tariffa = 0 THEN
-                        SET v_tipo_tariffa = 'gratuita_struttura';
-                        SET p_costo_calcolato = 0;
-                        SET v_stato_pagamento = 'gratuito';
-                    ELSE
-                        SET v_tipo_tariffa = 'standard';
-                        SET p_costo_calcolato = ROUND(p_quantita_kwh * v_tariffa, 2);
-                        SET v_stato_pagamento = 'in_attesa_pagamento';
-                    END IF;
+                    SET p_costo_calcolato = ROUND(p_quantita_kwh * v_tariffa, 2);
 
                     UPDATE sessioni_ricarica
                     SET data_fine = NOW(),
                         quantita_kwh = p_quantita_kwh,
-                        tipo_tariffa_applicata = v_tipo_tariffa,
                         costo_totale = p_costo_calcolato,
-                        stato_pagamento = v_stato_pagamento,
-                        motivazione_gratuita = IF(v_tipo_tariffa = 'gratuita_struttura', 'Tariffa punto impostata a zero', NULL)
+                        stato_pagamento = IF(p_costo_calcolato > 0, 'in_attesa_pagamento', 'gratuito')
                     WHERE id_sessione = p_id_sessione;
 
                     SET p_successo = 1;
@@ -196,9 +181,6 @@ return new class extends Migration
         ");
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
         DB::unprepared("DROP PROCEDURE IF EXISTS sp_verifica_disponibilita");
@@ -206,6 +188,3 @@ return new class extends Migration
         DB::unprepared("DROP PROCEDURE IF EXISTS sp_termina_sessione");
     }
 };
-
-
-?>
