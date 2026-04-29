@@ -11,7 +11,7 @@
 ---
 
 ## Documenti comuni
- - Link per il Google Sheet in cui segnare il lavoro : https://docs.google.com/spreadsheets/d/18hh5FdGq2FQlrV5g2JsqiP4sDy6E7cDKPTx9qOVLbyI/edit?usp=sharing
+ - Link per il Google Sheet in cui segnare il lavoro : https://docs.google.com/spreadsheets/d/1issDTVEbSY2n5PYtmOGqDITHq1URSeaH9e9YzDMPt50/edit?usp=sharing
 
 ## 🚀 Procedura passo passo
 
