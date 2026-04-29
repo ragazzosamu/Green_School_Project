@@ -1,7 +1,5 @@
 # Green School Project – Setup iniziale
 
-> ⚠️ **Importante:** questa procedura va eseguita **una sola volta** all'inizio del progetto.
-
 ---
 
 ## 📦 Prerequisiti
@@ -11,6 +9,9 @@
 - [DBeaver](https://dbeaver.io/) (opzionale, per gestire il database)
 
 ---
+
+## Documenti comuni
+ - Link per il Google Sheet in cui segnare il lavoro : https://docs.google.com/spreadsheets/d/18hh5FdGq2FQlrV5g2JsqiP4sDy6E7cDKPTx9qOVLbyI/edit?usp=sharing
 
 ## 🚀 Procedura passo passo
 
@@ -36,13 +37,15 @@ docker exec -it green_app bash
 composer install
 exit
 ```
+# 4. Configurazione file .env
+rinominate il file .env.example in .env
 
-# 4. Importazione dati sql
+# 5. Importazione dati sql
 ```bash
-Get-Content database.sql | docker exec -i green_db mariadb -uadmin -ppassword db_green_school
+docker exec -it green_app php artisan migrate:fresh --seed
 ```
 
-# 5. Parametri di connessione DBeaver
+# 6. Parametri di connessione DBeaver
  - Tipo: MySql
  - Host: localhost
  - Porta: 3306
@@ -50,8 +53,7 @@ Get-Content database.sql | docker exec -i green_db mariadb -uadmin -ppassword db
  - Username: admin
  - Password: password
 
-# 6. Configurazione file .env
-rinominate il file .env.example in .env
+
 
 ## Comandi di gestione
 ```bash
