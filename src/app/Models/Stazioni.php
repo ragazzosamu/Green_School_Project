@@ -16,13 +16,15 @@ class Stazioni extends Model
     public $timestamps = false;
 
     protected $fillable = [
-        'id_stazione', 
-        'nome', 
-        'indirizzo', 
-        'latitudine', 
-        'longitudine', 
-        'tipo_area'
-    ]; //info generali sulla stazione: il nome della zona e le coordinate geografiche per trovarla sulla mappa
+    'id_stazione', 
+    'nome', 
+    'indirizzo', 
+    'latitudine', 
+    'longitudine', 
+    'coordinata', // <--- Deve esserci questo!
+    'tipo_area', 
+    'data_attivazione'
+]; //info generali sulla stazione: il nome della zona e le coordinate geografiche per trovarla sulla mappa
 
     public function puntiRicarica() {
         return $this->hasMany(Punti_ricarica::class, 'id_stazione', 'id_stazione'); //permette di vedere quante e quali colonnine sono montate dentro questa specifica stazione
