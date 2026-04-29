@@ -38,7 +38,9 @@ composer install
 exit
 ```
 # 4. Configurazione file .env
-rinominate il file .env.example in .env
+```bash
+cp .env.example .env
+```
 
 # 5. Importazione dati sql
 ```bash
