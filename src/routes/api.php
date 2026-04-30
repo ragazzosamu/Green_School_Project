@@ -3,6 +3,7 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\StationController;
 
 // Rotta per il login - PUBBLICA
 Route::post('/login', [AuthController::class, 'login']);
@@ -16,4 +17,13 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     Route::post('/logout', [AuthController::class, 'logout']);
+
 });
+
+Route::get('/stations',[StationController::class, 'all']); # questa route andrà messa dentro il token sanctum
+
+Route::get('/station/{id}',[StationController::class, 'show']); # questa route andrà messa dentro il token sanctum
+
+
+
+

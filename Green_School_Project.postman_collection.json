@@ -1,0 +1,39 @@
+{
+  "info": {
+    "_postman_id": "130fffe8-3ec5-43cd-bb99-bde5f88c12ee",
+    "name": "Green_School_Project",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "54369759",
+    "_collection_link": "https://go.postman.co/collection/54369759-130fffe8-3ec5-43cd-bb99-bde5f88c12ee?source=collection_link"
+  },
+  "item": [
+    {
+      "name": "Prendi tutte le stazioni",
+      "request": {
+        "method": "GET",
+        "header": []
+      },
+      "response": []
+    },
+    {
+      "name": "Prendi stazione con ID",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost/api/station/c1d1d1c3-2806-3007-8f48-33f2b28c4839",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "path": [
+            "api",
+            "station",
+            "c1d1d1c3-2806-3007-8f48-33f2b28c4839"
+          ]
+        }
+      },
+      "response": []
+    }
+  ]
+}

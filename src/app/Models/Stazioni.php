@@ -4,6 +4,8 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Casts\Attribute; 
+use Illuminate\Support\Facades\DB;               
 
 class Stazioni extends Model
 {
@@ -25,6 +27,33 @@ class Stazioni extends Model
     'tipo_area', 
     'data_attivazione'
 ]; //info generali sulla stazione: il nome della zona e le coordinate geografiche per trovarla sulla mappa
+
+
+    protected function coordinata(): Attribute
+    {
+        return Attribute::make(
+            get: function ($value) {
+                // 1. Se il campo nel database è vuoto, restituisci null ed evita errori
+                if (is_null($value)) return null;
+
+                try {
+                    /**
+                     * 2. Il dato nel DB è in formato BINARIO (illeggibile per JSON).
+                     * Usiamo la funzione SQL 'ST_AsText' per convertirlo in una stringa leggibile.
+                     * Esempio di trasformazione: [01010000...] -> "POINT(45.123 9.456)"
+                     */
+                    $res = DB::select("SELECT ST_AsText(?) AS wkt", [$value]);
+
+                    // 3. Restituisci la stringa convertita o null se la conversione fallisce
+                    return $res[0]->wkt ?? null;
+                    
+                } catch (\Exception $e) {
+                    // In caso di errore durante la conversione, restituisci un messaggio di debug
+                    return "Errore conversione dati geografici";
+                }
+            }
+        );
+    }
 
     public function puntiRicarica() {
         return $this->hasMany(Punti_ricarica::class, 'id_stazione', 'id_stazione'); //permette di vedere quante e quali colonnine sono montate dentro questa specifica stazione
