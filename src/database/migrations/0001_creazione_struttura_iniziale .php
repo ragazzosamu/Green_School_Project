@@ -9,7 +9,7 @@ return new class extends Migration
     {
         // --- Tabella UTENTI ---
         Schema::create('utenti', function (Blueprint $table) {
-            $table->string('id_utente')->primary(); // Cambiato da UUID a string per accettare "U001"
+            $table->uuid('id_utente')->primary(); 
             $table->string('email', 255)->unique();
             $table->string('password'); // <--- AGGIUNTO PER SANCTUM
             $table->string('cellulare', 20)->index();

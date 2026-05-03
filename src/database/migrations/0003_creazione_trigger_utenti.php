@@ -10,8 +10,8 @@ return new class extends Migration
      */
     public function up(): void
     {
-        // 1. Trigger per UUID Utenti
-        // Nota: Il tuo schema accetta stringhe (es. "U001"). Questo interviene solo se il campo è vuoto.
+        // --- 1. Trigger per UUID Utenti ---
+        DB::unprepared("DROP TRIGGER IF EXISTS trg_set_utenti_uuid_ins");
         DB::unprepared(<<<SQL
             CREATE TRIGGER trg_set_utenti_uuid_ins
             BEFORE INSERT ON utenti
@@ -23,7 +23,8 @@ return new class extends Migration
             END;
         SQL);
 
-        // 2. Trigger per UUID e Coordinate Stazioni (Insert)
+        // --- 2. Trigger per UUID e Coordinate Stazioni (Insert) ---
+        DB::unprepared("DROP TRIGGER IF EXISTS trg_set_stazioni_coordinata_ins");
         DB::unprepared(<<<SQL
             CREATE TRIGGER trg_set_stazioni_coordinata_ins
             BEFORE INSERT ON stazioni
@@ -36,7 +37,8 @@ return new class extends Migration
             END;
         SQL);
 
-        // 3. Trigger per Coordinate Stazioni (Update)
+        // --- 3. Trigger per Coordinate Stazioni (Update) ---
+        DB::unprepared("DROP TRIGGER IF EXISTS trg_set_stazioni_coordinata_upd");
         DB::unprepared(<<<SQL
             CREATE TRIGGER trg_set_stazioni_coordinata_upd
             BEFORE UPDATE ON stazioni
@@ -48,7 +50,8 @@ return new class extends Migration
             END;
         SQL);
 
-        // 4. Trigger per UUID Punti Ricarica
+        // --- 4. Trigger per UUID Punti Ricarica ---
+        DB::unprepared("DROP TRIGGER IF EXISTS trg_set_punti_uuid_ins");
         DB::unprepared(<<<SQL
             CREATE TRIGGER trg_set_punti_uuid_ins
             BEFORE INSERT ON punti_ricarica
@@ -60,7 +63,8 @@ return new class extends Migration
             END;
         SQL);
 
-        // 5. Trigger per UUID Sessioni (Paracadute per Eloquent, la SP lo fa già)
+        // --- 5. Trigger per UUID Sessioni ---
+        DB::unprepared("DROP TRIGGER IF EXISTS trg_set_sessioni_uuid_ins");
         DB::unprepared(<<<SQL
             CREATE TRIGGER trg_set_sessioni_uuid_ins
             BEFORE INSERT ON sessioni_ricarica
@@ -72,7 +76,8 @@ return new class extends Migration
             END;
         SQL);
 
-        // 6. Trigger per UUID Accumulatori (PULITO DAL CALCOLO ERRATO)
+        // --- 6. Trigger per UUID Accumulatori ---
+        DB::unprepared("DROP TRIGGER IF EXISTS trg_set_accumulatori_uuid_ins");
         DB::unprepared(<<<SQL
             CREATE TRIGGER trg_set_accumulatori_uuid_ins
             BEFORE INSERT ON accumulatori_stazione
@@ -84,9 +89,8 @@ return new class extends Migration
             END;
         SQL);
 
-        // 7. NUOVO TRIGGER: Calcolo Percentuale da Storico Batteria
-        // Questo fa la vera magia: quando un sensore inserisce i kWh attuali nello storico,
-        // calcola la percentuale basandosi sulla capacita_totale_kwh e aggiorna l'accumulatore.
+        // --- 7. Calcolo Percentuale da Storico Batteria ---
+        DB::unprepared("DROP TRIGGER IF EXISTS trg_aggiorna_percentuale_accumulatore");
         DB::unprepared(<<<SQL
             CREATE TRIGGER trg_aggiorna_percentuale_accumulatore
             AFTER INSERT ON storico_livello_batteria
@@ -98,7 +102,8 @@ return new class extends Migration
             END;
         SQL);
 
-        // 8. Trigger per Check Giorno Tariffe (Insert)
+        // --- 8. Check Giorno Tariffe (Insert) ---
+        DB::unprepared("DROP TRIGGER IF EXISTS trg_check_tariffa_giorno_ins");
         DB::unprepared(<<<SQL
             CREATE TRIGGER trg_check_tariffa_giorno_ins
             BEFORE INSERT ON tariffe_orarie
@@ -110,7 +115,8 @@ return new class extends Migration
             END;
         SQL);
 
-        // 9. Trigger per Check Giorno Tariffe (Update)
+        // --- 9. Check Giorno Tariffe (Update) ---
+        DB::unprepared("DROP TRIGGER IF EXISTS trg_check_tariffa_giorno_upd");
         DB::unprepared(<<<SQL
             CREATE TRIGGER trg_check_tariffa_giorno_upd
             BEFORE UPDATE ON tariffe_orarie
@@ -122,7 +128,8 @@ return new class extends Migration
             END;
         SQL);
 
-        // 10. Trigger per Check Sessione Aperta
+        // --- 10. Check Sessione Aperta ---
+        DB::unprepared("DROP TRIGGER IF EXISTS trg_check_sessione_aperta");
         DB::unprepared(<<<SQL
             CREATE TRIGGER trg_check_sessione_aperta
             BEFORE INSERT ON sessioni_ricarica
@@ -140,7 +147,8 @@ return new class extends Migration
             END;
         SQL);
 
-        // 11. Trigger per Update Heartbeat dopo Sessione
+        // --- 11. Update Heartbeat dopo Sessione ---
+        DB::unprepared("DROP TRIGGER IF EXISTS trg_update_heartbeat_after_session");
         DB::unprepared(<<<SQL
             CREATE TRIGGER trg_update_heartbeat_after_session
             AFTER INSERT ON sessioni_ricarica
@@ -165,7 +173,7 @@ return new class extends Migration
             'trg_set_punti_uuid_ins',
             'trg_set_sessioni_uuid_ins',
             'trg_set_accumulatori_uuid_ins',
-            'trg_aggiorna_percentuale_accumulatore', // <--- Aggiornato nel down()
+            'trg_aggiorna_percentuale_accumulatore',
             'trg_check_tariffa_giorno_ins',
             'trg_check_tariffa_giorno_upd',
             'trg_check_sessione_aperta',

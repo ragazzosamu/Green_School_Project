@@ -22,7 +22,7 @@ class UtentiFactory extends Factory
     {
         return [
             // Genera un ID tipo U123 invece di un UUID lungo, per restare simile ai tuoi dati
-            'id_utente'       => 'U' . fake()->unique()->numberBetween(100, 999),
+            'id_utente'       => fake()->unique()->uuid(),
             'email'           => fake()->unique()->safeEmail(),
             'password'        => Hash::make('password123'), // <--- AGGIUNTO: tutti gli utenti fake avranno questa password
             'cellulare'       => fake()->phoneNumber(),

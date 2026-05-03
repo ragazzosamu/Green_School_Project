@@ -66,33 +66,43 @@ docker-compose down      # Spegne e rimuove i container
 docker logs -f green_app # Visualizza gli errori PHP in tempo reale
 ```
 
-##  Guida ai Test API con Postman
+## 🚀 Guida ai Test API con Postman
 
-Utilizziamo un file JSON per condividere le rotte. Grazie all'uso delle **variabili di ambiente**, non dovrai mai cambiare manualmente l'URL delle richieste.
+Utilizziamo un file JSON per condividere le rotte. Grazie all'uso delle **variabili di ambiente** e degli **script automatici**, non dovrai mai cambiare manualmente l'URL delle richieste o incollare i Token a mano.
 
-### 1. 🛠 Setup Ambiente (Da fare SOLO la prima volta)
-Per far sì che Postman sappia dove punta il tuo container:
-1. In alto a destra , clicca su **Environments**.
+### 1. 🌍 Setup Ambiente (Da fare SOLO la prima volta)
+Per far sì che Postman sappia dove punta il tuo container locale:
+1. In alto a destra, clicca su **Environments**.
 2. Clicca sul tasto **+** e chiama l'ambiente `Sviluppo Locale`.
 3. Aggiungi la variabile `api`.
 4. Nel campo **Initial Value**, scrivi l'indirizzo completo fino alla cartella api:
-   - Esempio: `http://localhost/api`
+   - `http://localhost/api`
 5. Clicca su **Save** in alto a destra.
-6. **IMPORTANTE:** In alto a destra nell'interfaccia di Postman, dove c'è scritto "No Environment", seleziona dal menu a tendina `Sviluppo Locale`.
+6. **IMPORTANTE:** In alto a destra nell'interfaccia principale di Postman, dove c'è scritto "No Environment", seleziona dal menu a tendina `Sviluppo Locale`.
 
 ### 2. 📂 Importazione Collezione
 1. Scarica il file `postman/Green_School_Project.postman_collection.json` dal progetto.
 2. Su Postman, clicca **Import** e trascina il file.
 3. Se lo avevi già, seleziona **Replace**.
-4. Ora puoi lanciare le richieste. Noterai che l'URL è scritto come `{{api}}/ROUTE_API_RICHIESTA`: Postman sostituirà automaticamente `{{api}}` con l'indirizzo del tuo ambiente.
+4. Ora puoi lanciare le richieste. Noterai che l'URL è scritto come `{{api}}/NOME_ROTTA`: Postman sostituirà automaticamente `{{api}}` con l'indirizzo del tuo ambiente.
+
+### 3. 🔐 Autenticazione Automatica (Login & Token)
+Il progetto usa Laravel Sanctum per l'autenticazione. **Non devi copiare e incollare il token a mano!**
+1. Apri la cartella della collezione importata.
+2. Cerca la richiesta **Login** e aprila.
+3. Clicca su **Send**.
+4. *Magia:* Uno script integrato leggerà la risposta del server e salverà automaticamente il tuo Token d'accesso.
+5. Da questo momento, puoi lanciare qualsiasi altra rotta protetta (es. Profilo, Ricariche): Postman allegherà il tuo "Badge VIP" in completa autonomia.
+
+---
 
 ### 🔄 Cosa fare ad ogni modifica (Regole del Team)
 Se modifichi un controller o aggiungi una rotta su Laravel:
 
-1. **Aggiorna Postman:** Crea o modifica la richiesta nel tuo Postman.
+1. **Aggiorna Postman:** Crea o modifica la richiesta nel tuo Postman locale.
 2. **Esporta il JSON:**
-   - Clicca sui tre puntini `...` della collezione -> **More** -> **Export collection**.
+   - Clicca sui tre puntini `...` della collezione -> **More** -> **Export**.
    - Salva il file sovrascrivendo quello nella repository del progetto Git.
-3. **Commit & Push:** Carica il file JSON su GitHub insieme al codice PHP.
+3. **Commit & Push:** Carica il file JSON su GitHub insieme al tuo codice PHP.
 4. **Segnala:** Scrivi sul gruppo: *"Nuova rotta aggiunta: [nome rotta]. Fate pull e re-importate il JSON!"*.
-5. **Ricezione:** I compagni fanno `git pull` e re-importano il file (l'ambiente `Sviluppo Locale` non va toccato, continuerà a funzionare).
+5. **Ricezione:** I compagni fanno `git pull` e re-importano il file (l'ambiente `Sviluppo Locale` non va toccato, continuerà a funzionare e il token automatico non si romperà).

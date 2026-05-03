@@ -1,25 +1,67 @@
-*.log
-.DS_Store
+# ----------------------------------------------------------------------
+# LARAVEL CORE & PACCHETTI
+# ----------------------------------------------------------------------
+/vendor/
+/node_modules/
+/public/build/
+/public/hot/
+/public/storage/
+/storage/*.key
+/storage/pail/
+/auth.json
+/bootstrap/cache/
+
+# ----------------------------------------------------------------------
+# AMBIENTE & CONFIGURAZIONI (Mai committare credenziali!)
+# ----------------------------------------------------------------------
 .env
 .env.backup
 .env.production
-.phpactor.json
+
+# ----------------------------------------------------------------------
+# DOCKER (Dati persistenti e log)
+# ----------------------------------------------------------------------
+# Ignora le cartelle locali usate dai volumi Docker (es. database)
+# (Se nel tuo docker-compose usi cartelle diverse, aggiungile qui)
+/docker/mysql/
+/docker/mariadb/
+/.docker/
+/db_data/
+
+# ----------------------------------------------------------------------
+# TEST, CACHE & LOG
+# ----------------------------------------------------------------------
+*.log
+/.phpunit.cache/
 .phpunit.result.cache
+
+# ----------------------------------------------------------------------
+# IDE & AUTOCOMPLETAMENTO
+# ----------------------------------------------------------------------
+/.idea/
+/.vscode/
 /.cursor/
-/.idea
-/.nova
-/.phpunit.cache
-/.vscode
-/.zed
-/auth.json
-/node_modules
-/public/build
-/public/hot
-/public/storage
-/storage/*.key
-/storage/pail
-/vendor
+/.nova/
+/.zed/
+.phpactor.json
 _ide_helper.php
+_ide_helper_models.php
+.phpstorm.meta.php
+
+# ----------------------------------------------------------------------
+# VAGRANT / HOMESTEAD (Se utilizzati)
+# ----------------------------------------------------------------------
 Homestead.json
 Homestead.yaml
+
+# ----------------------------------------------------------------------
+# FILE DI SISTEMA (MacOS & Windows)
+# ----------------------------------------------------------------------
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
 Thumbs.db
+ehthumbs.db
+Desktop.ini

@@ -16,13 +16,18 @@ Route::middleware('auth:sanctum')->group(function () {
         return $request->user();
     });
 
+    // Rotta per vedere tutte le stazioni, (problema con coordinate)
+    Route::get('/stations',[StationController::class, 'all']); 
+
+    // Rotta per vedere una stazione specifica
+    Route::get('/station/{id}',[StationController::class, 'show']); 
+
+
     Route::post('/logout', [AuthController::class, 'logout']);
 
 });
 
-Route::get('/stations',[StationController::class, 'all']); # questa route andrà messa dentro il token sanctum
 
-Route::get('/station/{id}',[StationController::class, 'show']); # questa route andrà messa dentro il token sanctum
 
 
 
