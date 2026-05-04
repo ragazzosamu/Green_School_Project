@@ -41,6 +41,7 @@ exit
 ```
 # 4. Configurazione file .env
 ```bash
+cd src
 cp .env.example .env
 ```
 
