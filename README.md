@@ -50,7 +50,7 @@ cp .env.example .env
 docker exec -it green_app php artisan migrate:fresh --seed
 ```
 
-# 6. Parametri di connessione DBeaver
+## 6. Parametri di connessione DBeaver
  - Tipo: MySql
  - Host: localhost
  - Porta: 3306
