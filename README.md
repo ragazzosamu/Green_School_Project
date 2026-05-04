@@ -17,7 +17,7 @@
 
 ## 🚀 Procedura passo passo
 
-### 1. Clona la repository
+## 1. Clona la repository
 
 Apri GitHub Desktop e clona il repository, oppure usa il terminale:
 
@@ -36,15 +36,16 @@ docker-compose up -d
 ## 3. Installazione dipendenze
 ```bash
 docker exec -it green_app bash
+cd src
 composer install
 exit
 ```
-# 4. Configurazione file .env
+## 4. Configurazione file .env
 ```bash
 cp .env.example .env
 ```
 
-# 5. Importazione dati sql
+## 5. Importazione dati sql
 ```bash
 docker exec -it green_app php artisan migrate:fresh --seed
 ```
@@ -70,7 +71,7 @@ docker logs -f green_app # Visualizza gli errori PHP in tempo reale
 
 Utilizziamo un file JSON per condividere le rotte. Grazie all'uso delle **variabili di ambiente** e degli **script automatici**, non dovrai mai cambiare manualmente l'URL delle richieste o incollare i Token a mano.
 
-### 1. 🌍 Setup Ambiente (Da fare SOLO la prima volta)
+## 1. 🌍 Setup Ambiente (Da fare SOLO la prima volta)
 Per far sì che Postman sappia dove punta il tuo container locale:
 1. In alto a destra, clicca su **Environments**.
 2. Clicca sul tasto **+** e chiama l'ambiente `Sviluppo Locale`.
@@ -80,13 +81,13 @@ Per far sì che Postman sappia dove punta il tuo container locale:
 5. Clicca su **Save** in alto a destra.
 6. **IMPORTANTE:** In alto a destra nell'interfaccia principale di Postman, dove c'è scritto "No Environment", seleziona dal menu a tendina `Sviluppo Locale`.
 
-### 2. 📂 Importazione Collezione
+## 2. 📂 Importazione Collezione
 1. Scarica il file `postman/Green_School_Project.postman_collection.json` dal progetto.
 2. Su Postman, clicca **Import** e trascina il file.
 3. Se lo avevi già, seleziona **Replace**.
 4. Ora puoi lanciare le richieste. Noterai che l'URL è scritto come `{{api}}/NOME_ROTTA`: Postman sostituirà automaticamente `{{api}}` con l'indirizzo del tuo ambiente.
 
-### 3. 🔐 Autenticazione Automatica (Login & Token)
+## 3. 🔐 Autenticazione Automatica (Login & Token)
 Il progetto usa Laravel Sanctum per l'autenticazione. **Non devi copiare e incollare il token a mano!**
 1. Apri la cartella della collezione importata.
 2. Cerca la richiesta **Login** e aprila.
@@ -96,7 +97,7 @@ Il progetto usa Laravel Sanctum per l'autenticazione. **Non devi copiare e incol
 
 ---
 
-### 🔄 Cosa fare ad ogni modifica (Regole del Team)
+## 🔄 Cosa fare ad ogni modifica (Regole del Team)
 Se modifichi un controller o aggiungi una rotta su Laravel:
 
 1. **Aggiorna Postman:** Crea o modifica la richiesta nel tuo Postman locale.
