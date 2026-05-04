@@ -1,0 +1,4 @@
+name: Sviluppo Locale
+values:
+  - key: api
+    value: ''
