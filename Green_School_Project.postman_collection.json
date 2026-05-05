@@ -1,17 +1,20 @@
 {
   "info": {
-    "_postman_id": "130fffe8-3ec5-43cd-bb99-bde5f88c12ee",
+    "_postman_id": "3ef0e118-dcd0-4ed6-8b0f-d3f715ad689c",
     "name": "Green_School_Project",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-    "_exporter_id": "54369759",
-    "_collection_link": "https://go.postman.co/collection/54369759-130fffe8-3ec5-43cd-bb99-bde5f88c12ee?source=collection_link"
+    "_exporter_id": "54369945",
+    "_collection_link": "https://go.postman.co/collection/54369945-3ef0e118-dcd0-4ed6-8b0f-d3f715ad689c?source=collection_link"
   },
   "item": [
     {
       "name": "Prendi tutte le stazioni",
       "request": {
         "method": "GET",
-        "header": []
+        "header": [],
+        "url": {
+          "raw": ""
+        }
       },
       "response": []
     },
@@ -42,7 +45,7 @@
         "header": [],
         "body": {
           "mode": "raw",
-          "raw": "{\r\n    \"email\": \"julianne86@example.com\",\r\n    \"password\": \"password123\"\r\n\r\n}",
+          "raw": "{\r\n    \"email\": \"test.test@email.it\",\r\n    \"password\": \"password123\"\r\n\r\n}",
           "options": {
             "raw": {
               "language": "json"

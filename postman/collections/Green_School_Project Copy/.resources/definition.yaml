@@ -1,0 +1,11 @@
+$kind: collection
+id: daFc9B8f409DaAAD6490D6BE
+name: Green_School_Project Copy
+variables:
+  token: ""
+auth:
+  - id: ea91dbf3-8297-423d-be20-8da5237bf76a
+    type: bearer
+    name: bearer auth
+    credentials:
+      token: "{{token}}"

@@ -20,17 +20,7 @@ class DatabaseSeeder extends Seeder
         Stazioni::truncate();
         DB::statement('SET FOREIGN_KEY_CHECKS=1;');
 
-        // 1. CREAZIONE UTENTE MARIO ROSSI
-        Utenti::create([
-            'id_utente' => 'U001',
-            'nome' => 'Mario',
-            'cognome' => 'Rossi',
-            'email' => 'mario.rossi@email.it',
-            'password' => Hash::make('password123'),
-            'cellulare' => '3331122334',
-            'tipo_account' => 'completo',
-            'attivo' => true
-        ]);
+        
 
         // 2. CREAZIONE STAZIONE CON COORDINATA (Formato POINT)
         // Nota: Nel formato WKT si mette prima Longitudine poi Latitudine
@@ -47,6 +37,18 @@ class DatabaseSeeder extends Seeder
 
         $this->command->info('Database popolato con successo (Inclusa la coordinata)!');
         */
+
+        // 1. CREAZIONE UTENTE TEST  'id_utente'       => fake()->unique()->uuid(),
+        Utenti::create([
+            'id_utente' => fake()->unique()->uuid(),
+            'nome' => 'test',
+            'cognome' => 'test',
+            'email' => 'test.test@email.it',
+            'password' => Hash::make('password123'),
+            'cellulare' => '3331122334',
+            'tipo_account' => 'completo',
+            'attivo' => true
+        ]);
 
         \App\Models\Utenti::factory(10)->create();
         \App\Models\Stazioni::factory(5)->create();

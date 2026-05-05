@@ -1,0 +1,4 @@
+$kind: http-request
+url: http://localhost/api/station/c1d1d1c3-2806-3007-8f48-33f2b28c4839
+method: GET
+order: 2000
