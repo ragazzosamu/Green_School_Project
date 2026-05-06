@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\Stazioni;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Cache;
 
 class StationController extends Controller
 {
@@ -25,6 +26,7 @@ class StationController extends Controller
         // Aggiungiamo makeHidden per escludere il campo problematico dal JSON
         $stazioni = Stazioni::with('puntiRicarica')->get();
 
+
         return response()->json([
             'status' => 'success',
             'data' => $stazioni
@@ -41,7 +43,7 @@ class StationController extends Controller
 
 
     
-    public function show(string $id): JsonResponse
+    public function show(string $id, Request $request): JsonResponse
     {
         /**
         * Recupera i dettagli di una singola stazione tramite il suo ID.
@@ -54,6 +56,12 @@ class StationController extends Controller
 
         try {
             $stazione = Stazioni::with('puntiRicarica')->findOrFail($id);
+
+            $nonce = bin2hex(random_bytes(16));
+            $userId = $request->user()->id_utente;
+            $cacheKey = "scan_nonce:{$userId}:{$id}";
+
+            Cache::put($cacheKey, $nonce, now()->addMinutes(2));
 
             return response()->json([
                 'status' => 'success',

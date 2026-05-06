@@ -22,7 +22,7 @@ class QrService
     public function CreaUrlFirmato(string $id_Punto) : string
     {
         $firma = hash_hmac('sha256',$id_Punto,$this->qrKey);
-        return $this->qrUrl . "?station=" . $id_Punto . "&firma=" . $firma;
+         return "gs:{$idPunto}:{$firma}";
     }
 
     /**

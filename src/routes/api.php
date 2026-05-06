@@ -4,6 +4,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\StationController;
+use App\Http\Controllers\Api\SessionController;
 
 // Rotta pubblica per login da dispositivi esterni (Postman/Python)
 Route::post('/login', [AuthController::class, 'login']);
@@ -17,6 +18,13 @@ Route::middleware('auth:sanctum')->group(function () {
     // Dettaglio stazione singola
     Route::get('/station/{id}', [StationController::class, 'show']); 
 
+    // Avvio sessione
+    Route::post('/scan-qr',[SessionController::class, 'AvvioSessione']);
+
+    // In futuro da modificare per gamification
+    Route::get('session/{id}',[SessionController::class, 'show']);
+
+    Route::post('session/{id}/stop',[SessionController::class, 'InterrompiSessione']);
     
     Route::post('/logout', [AuthController::class, 'logout']);
 });

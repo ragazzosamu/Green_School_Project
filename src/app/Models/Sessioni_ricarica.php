@@ -47,4 +47,6 @@ class Sessioni_ricarica extends Model
     {
         return $this->belongsTo(Punti_ricarica::class, 'id_punto', 'id_punto'); //collega la ricarica alla colonnina specifica che è stata usata fisicamente
     }
+
+    
 }
