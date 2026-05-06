@@ -35,4 +35,9 @@ return [
         ],
     ],
 
+    'qr' => [
+    'secret' => env('QR_SECRET'),
+    'domain' => env('QR_DOMAIN'),
+    ],
+
 ];

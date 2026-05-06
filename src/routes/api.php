@@ -17,10 +17,6 @@ Route::middleware('auth:sanctum')->group(function () {
     // Dettaglio stazione singola
     Route::get('/station/{id}', [StationController::class, 'show']); 
 
-    // Test utente loggato
-    Route::get('/user', function (Request $request) {
-        return $request->user();
-    });
-
+    
     Route::post('/logout', [AuthController::class, 'logout']);
 });

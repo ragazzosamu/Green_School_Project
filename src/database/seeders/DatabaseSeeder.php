@@ -13,33 +13,9 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
 
-        /*
-        // Pulizia tabelle di sicurezza
-        DB::statement('SET FOREIGN_KEY_CHECKS=0;');
-        Utenti::truncate();
-        Stazioni::truncate();
-        DB::statement('SET FOREIGN_KEY_CHECKS=1;');
-
-        
-
-        // 2. CREAZIONE STAZIONE CON COORDINATA (Formato POINT)
-        // Nota: Nel formato WKT si mette prima Longitudine poi Latitudine
-        Stazioni::create([
-            'id_stazione' => 'S001',
-            'nome' => 'Parcheggio Nord',
-            'indirizzo' => 'Via della Scuola, 1',
-            'latitudine' => 45.4642,
-            'longitudine' => 9.1900,
-            'coordinata' => DB::raw("ST_GeomFromText('POINT(9.1900 45.4642)')"), 
-            'tipo_area' => 'pubblico',
-            'data_attivazione' => now(),
-        ]);
-
-        $this->command->info('Database popolato con successo (Inclusa la coordinata)!');
-        */
-
         // 1. CREAZIONE UTENTE TEST  'id_utente'       => fake()->unique()->uuid(),
-        Utenti::create([
+        Utenti::create
+        ([
             'id_utente' => fake()->unique()->uuid(),
             'nome' => 'test',
             'cognome' => 'test',
@@ -50,16 +26,29 @@ class DatabaseSeeder extends Seeder
             'attivo' => true
         ]);
 
+
+        $lat = fake()->latitude(45.665, 45.679);
+        $lon = fake()->longitude(11.925, 11.939);
+        
+        Stazioni::create([
+
+            'id_stazione' => 'c1d1d1c3-2806-3007-8f48-33f2b28c4839',
+            'nome' => 'Stazione Barsanti',
+            'indirizzo' => fake()->streetName() . ', Castelfranco Veneto',
+            'latitudine' => $lat,
+            'longitudine' => $lon,
+            'coordinata' => DB::raw("ST_GeomFromText('POINT($lon $lat)')"),
+            'tipo_area' => 'pubblico',
+        ]);
+
         \App\Models\Utenti::factory(10)->create();
         \App\Models\Stazioni::factory(5)->create();
 
-        // 2. Crea i rami (dipendono dalle basi)
+
         \App\Models\Badge_utente::factory(10)->create();
         \App\Models\Accumulatori_stazione::factory(5)->create();
         \App\Models\Punti_ricarica::factory(15)->create();
 
-        // 3. Crea i frutti (dipendono da tutto il resto)
-        // Ora basta chiamare create() senza parametri!
         \App\Models\Sessioni_ricarica::factory(30)->create();
         \App\Models\StoricoLivelloBatteria::factory(100)->create();
 

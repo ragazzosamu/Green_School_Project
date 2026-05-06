@@ -17,6 +17,8 @@
 
 ## 🚀 Procedura passo passo
 
+## 🚀 Procedura passo passo
+
 ## 1. Clona la repository
 
 Apri GitHub Desktop e clona il repository, oppure usa il terminale:
@@ -24,7 +26,6 @@ Apri GitHub Desktop e clona il repository, oppure usa il terminale:
 ```bash
 git clone <url-del-repository> 
 cd Green_School_Project
-
 ```
 oppure usa git hub desktop
 
@@ -33,25 +34,18 @@ oppure usa git hub desktop
 docker-compose up -d
 ```
 
-## 3. Installazione dipendenze
-```bash
-docker exec -it green_app bash
-cd src
-composer install
-exit
-```
-## 4. Configurazione file .env
+## 3. Configurazione file .env
 ```bash
 cd src
 cp .env.example .env
 ```
 
-## 5. Importazione dati sql
+## 4. Importazione dati sql
 ```bash
 docker exec -it green_app php artisan migrate:fresh --seed
 ```
 
-## 6. Parametri di connessione DBeaver
+## 5. Parametri di connessione DBeaver
  - Tipo: MySql
  - Host: localhost
  - Porta: 3306
@@ -59,7 +53,12 @@ docker exec -it green_app php artisan migrate:fresh --seed
  - Username: admin
  - Password: password
 
-
+## Comandi utili
+```bash
+# Genera il QR code SVG per una stazione di ricarica (sostituisci 1 con l'ID della stazione)
+# L'output si trova nella cartella storage/app/private/public/qrcodes
+docker exec -it green_app php artisan app:genera 1
+```
 
 ## Comandi di gestione
 ```bash

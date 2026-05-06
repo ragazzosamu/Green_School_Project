@@ -47,4 +47,4 @@ docker-compose.override.yml
 *.postman_environment.json
 
 # Ignora tutti i dati generati da Docker
-docker-data/
+docker-data\
