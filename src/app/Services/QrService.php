@@ -19,9 +19,9 @@ class QrService
      * Crea un URL firmato con HMAC-SHA256 per una stazione di ricarica.
      * La firma impedisce che l'URL venga falsificato senza la chiave segreta.
      */
-    public function CreaUrlFirmato(string $id_Punto) : string
+    public function CreaUrlFirmato(string $idPunto) : string
     {
-        $firma = hash_hmac('sha256',$id_Punto,$this->qrKey);
+        $firma = hash_hmac('sha256',$idPunto,$this->qrKey);
          return "gs:{$idPunto}:{$firma}";
     }
 

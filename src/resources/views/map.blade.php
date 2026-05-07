@@ -18,45 +18,82 @@
 
 @push('scripts')
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pusher/8.3.0/pusher.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/laravel-echo@1.15.3/dist/echo.iife.js"></script>
 
 <script>
-    // Recuperiamo i dati passati dal server Laravel (PHP) e li trasformiamo in variabili JavaScript
-    //QUESTI ERRORI SONO SOLO VISIVI, NON TOCCARE O PROVARE A SISTEMARE
-    // @ts-ignore
-    const apiToken = "{{ $api_token }}"; // Il token segreto per chiamare le API
-    // @ts-ignore
-    const centerLat = {{ $center_lat ?? 45.4642 }}; // Latitudine centrale
-    // @ts-ignore
-    const centerLng = {{ $center_lng ?? 9.1900 }}; // Longitudine centrale
-    // @ts-ignore
-    const zoomLevel = {{ $zoom ?? 14 }}; // Livello di zoom
+    // 1. OGGETTO PER MEMORIZZARE I MARKER (Punto 2.10)
+    const markersMap = {}; 
 
-    // Inizializziamo la mappa Leaflet puntandola sulle coordinate scelte
+    // --- VARIABILI DI AMBIENTE ---
+    // @ts-ignore
+    const apiToken = "{{ $api_token }}";
+    // @ts-ignore
+    const centerLat = {{ $center_lat ?? 45.4642 }};
+    // @ts-ignore
+    const centerLng = {{ $center_lng ?? 9.1900 }};
+    // @ts-ignore
+    const zoomLevel = {{ $zoom ?? 14 }};
+
+    /**
+     * CONFIGURAZIONE REAL-TIME PROTETTA (Punto 2.10)
+     * Avvolgiamo tutto in un try-catch: se Reverb non è configurato bene,
+     * il codice non si blocca e i pallini vengono comunque caricati.
+     */
+    try {
+        window.Pusher = Pusher;
+        window.Echo = new Echo({
+            broadcaster: 'reverb',
+            key: '{{ env("VITE_REVERB_APP_KEY") }}',
+            wsHost: '{{ env("VITE_REVERB_HOST") }}',
+            wsPort: {{ env("VITE_REVERB_PORT", 8080) }},
+            forceTLS: false,
+            enabledTransports: ['ws', 'wss'],
+        });
+
+        // Ascolto cambio stato in tempo reale
+        window.Echo.channel('stazioni')
+            .listen('StazioneStatusChanged', (e) => {
+                console.log('Aggiornamento real-time ricevuto:', e);
+                const marker = markersMap[e.id_punto];
+                if (marker) {
+                    // Cambia colore al pallino
+                    marker.setStyle({
+                        fillColor: getMarkerColor(e.nuovo_stato)
+                    });
+                    // Cambia il testo nel popup (se aperto)
+                    const statusSpan = document.querySelector(`.status-text-${e.id_punto}`);
+                    if (statusSpan) statusSpan.innerText = e.nuovo_stato;
+                }
+            });
+            
+        console.log("Sistema Real-time inizializzato.");
+    } catch (error) {
+        console.error("Errore Echo: la mappa funzionerà ma non si aggiornerà da sola.", error);
+    }
+
+    // --- INIZIALIZZAZIONE MAPPA ---
     const map = L.map('map').setView([centerLat, centerLng], zoomLevel);
 
-    // Aggiungiamo i tasselli (tiles) di OpenStreetMap per vedere le strade
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap contributors'
     }).addTo(map);
 
-    /**
-     * Funzione che assegna il colore al pallino in base allo stato nel Database
-     */
     function getMarkerColor(stato) {
-        if(!stato) return '#9ca3af'; // Se non c'è stato -> Grigio
+        if(!stato) return '#9ca3af';
         switch(stato.toLowerCase()) {
-            case 'libera': return '#22c55e'; // Verde
-            case 'occupata': return '#ef4444'; // Rosso
-            default: return '#9ca3af'; // Tutto il resto -> Grigio
+            case 'libera': return '#22c55e';
+            case 'occupata': return '#ef4444';
+            default: return '#9ca3af';
         }
     }
 
     /**
-     * Funzione asincrona che scarica i dati delle stazioni dal server
+     * FUNZIONE CARICAMENTO STAZIONI
      */
     async function loadStations() {
+        console.log("Richiesta stazioni in corso...");
         try {
-            // Chiamata API protetta: inviamo il Token nell'Header Authorization
             const response = await fetch('/api/stations', {
                 method: 'GET',
                 headers: {
@@ -68,31 +105,29 @@
             if (!response.ok) throw new Error('Errore API');
 
             const jsonResponse = await response.json();
-            
-            // Prendiamo l'elenco delle stazioni dentro l'oggetto 'data'
             const stazioni = jsonResponse.data;
 
             stazioni.forEach(stazione => {
-                // Per ogni stazione, controlliamo se ha dei punti di ricarica
                 if (stazione.punti_ricarica && stazione.punti_ricarica.length > 0) {
-                    
                     stazione.punti_ricarica.forEach(punto => {
-                        // Creiamo un cerchietto (marker) sulla mappa per ogni punto trovato
+                        // Creazione marker
                         const marker = L.circleMarker([stazione.latitudine, stazione.longitudine], {
                             radius: 10,
-                            fillColor: getMarkerColor(punto.stato), // Colore dinamico
-                            color: "#fff", // Bordo bianco
+                            fillColor: getMarkerColor(punto.stato),
+                            color: "#fff",
                             weight: 2,
                             opacity: 1,
                             fillOpacity: 0.8
                         }).addTo(map);
 
-                        // Contenuto del fumetto che appare cliccando sul pallino
+                        // Salvataggio nell'indice per il real-time
+                        markersMap[punto.id_punto] = marker;
+
                         const popupContent = `
                             <div class="p-2 text-center">
                                 <h3 class="font-bold text-gray-800">${stazione.nome}</h3>
                                 <p class="text-xs text-gray-500 mb-1">Codice: ${punto.id_punto}</p>
-                                <p class="text-sm mb-3">Stato: <span class="font-semibold">${punto.stato}</span></p>
+                                <p class="text-sm mb-3">Stato: <span class="status-text-${punto.id_punto} font-semibold">${punto.stato}</span></p>
                                 <button onclick="startSimulatedCharge('${punto.id_punto}')" 
                                         class="bg-green-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-green-700 transition w-full">
                                     AVVIA RICARICA SIMULATA
@@ -103,19 +138,18 @@
                     });
                 }
             });
-
+            console.log("Stazioni caricate con successo.");
         } catch (error) {
             console.error('Errore:', error);
-            alert('Errore nel caricamento dati. Controlla la console.');
         }
     }
 
-    // Funzione di test attivata dal pulsante nel popup
     function startSimulatedCharge(idPunto) {
-        alert('Avvio ricarica per il punto: ' + idPunto);
+        const mockUuid = 'sessione-' + Math.random().toString(36).substr(2, 9);
+        window.location.href = `/session/${mockUuid}`;
     }
 
-    // Avviamo il caricamento dati appena la pagina è pronta
+    // Eseguiamo il caricamento
     loadStations();
 </script>
 @endpush
