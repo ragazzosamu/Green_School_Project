@@ -17,8 +17,6 @@
 
 ## 🚀 Procedura passo passo
 
-## 🚀 Procedura passo passo
-
 ## 1. Clona la repository
 
 Apri GitHub Desktop e clona il repository, oppure usa il terminale:
