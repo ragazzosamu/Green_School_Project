@@ -16,18 +16,22 @@ services:
     networks:
       - green-network
 
+
+  redis:
+    image: redis:alpine
+    container_name: green_redis
+    networks:
+      - green-network
+
+
   app:
     build: .
     container_name: green_app
     ports:
-      - "80:80"    # Apache
-      - "8080:8080" # Reverb (WebSocket)
+      - "80:80"
     volumes:
-      # Il codice sorgente viene montato direttamente: le modifiche locali si riflettono subito nel container
       - ./src:/var/www/html
-      # Configurazione virtuale di Apache montata dall'esterno per non ribuildaree l'immagine ad ogni modifica
       - ./vhost.conf:/etc/apache2/sites-available/000-default.conf
-    # All'avvio: prima installa le dipendenze PHP, poi avvia Apache
     command: sh -c "composer install --no-interaction && apache2-foreground"
     networks:
       - green-network
@@ -35,11 +39,31 @@ services:
       - mariadb
       - redis
 
-  redis:
-    image: redis:alpine
-    container_name: green_redis
+  reverb:
+    build: .                    # stessa immagine dell'app
+    container_name: green_reverb
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./src:/var/www/html     # stesso codice
+    command: php /var/www/html/artisan reverb:start --host=0.0.0.0 --port=8080
     networks:
       - green-network
+    depends_on:
+      - app
+      - redis
+
+  queue:
+    build: .                    # stessa immagine dell'app
+    container_name: green_queue
+    volumes:
+      - ./src:/var/www/html     # stesso codice
+    command: php /var/www/html/artisan queue:work --sleep=3 --tries=3
+    networks:
+      - green-network
+    depends_on:
+      - app
+      - redis
 
 networks:
   # Rete bridge condivisa tra tutti i container per farli comunicare tra loro
