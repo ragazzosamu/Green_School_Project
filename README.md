@@ -7,6 +7,7 @@
 - [GitHub Desktop](https://desktop.github.com/) (o Git CLI)
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/) (in esecuzione)
 - [DBeaver](https://dbeaver.io/) (opzionale, per gestire il database)
+- [Node.Js](https://nodejs.org/) (Serve per far funzionare i WebSocket (Reverb) con il browser)
 
 ---
 
@@ -14,8 +15,6 @@
  - **Tabella di marcia**: [Google Sheet Lavoro](https://docs.google.com/spreadsheets/d/1issDTVEbSY2n5PYtmOGqDITHq1URSeaH9e9YzDMPt50/edit?usp=sharing)
 
 ---
-
-## 🚀 Procedura passo passo
 
 ## 🚀 Procedura passo passo
 
@@ -29,29 +28,42 @@ cd Green_School_Project
 ```
 oppure usa git hub desktop
 
-## 2. Avvio container in background
-```bash
-docker-compose up -d
-```
-
-## 3. Configurazione file .env
+## 2. Configurazione file .env
 ```bash
 cd src
 cp .env.example .env
 ```
 
-## 4. Importazione dati sql
+## 3. Installazione Dipendenze e Compilazione (Vite)
+**ATTENZIONE:** Questi comandi vanno lanciati sul tuo PC (Windows/Mac), NON dentro Docker.
+```bash
+cd src
+npm install
+npm install --save-dev laravel-echo pusher-js
+npm run build
+```
+
+## 4. Avvio container in background
+```bash
+docker-compose up -d
+```
+
+## 5. Importazione dati sql
 ```bash
 docker exec -it green_app php artisan migrate:fresh --seed
 ```
 
-## 5. Parametri di connessione DBeaver
+## 6. Parametri di connessione DBeaver
  - Tipo: MySql
  - Host: localhost
  - Porta: 3306
  - Database: db_green_school
  - Username: admin
  - Password: password
+
+ ### 🌐 Accesso Browser
+* **Sito Web:** [http://localhost](http://localhost)
+* **WebSocket Test:** [http://localhost:8080](http://localhost:8080)
 
 ## Comandi utili
 ```bash

@@ -12,6 +12,8 @@ RUN apt-get update && apt-get install -y \
 RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install gd
 
+RUN docker-php-ext-install pcntl
+
 # Abilitiamo mod_rewrite di Apache, necessario per le rotte di Laravel
 RUN a2enmod rewrite
 
