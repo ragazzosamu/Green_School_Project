@@ -1,10 +1,10 @@
 {
   "info": {
-    "_postman_id": "957c224b-6ccf-41fb-b93c-94cca3672037",
+    "_postman_id": "e5256ca0-2c51-46d7-8cdc-da5b01d5bfbf",
     "name": "Green_School_Project",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
     "_exporter_id": "54369759",
-    "_collection_link": "https://go.postman.co/collection/54369759-957c224b-6ccf-41fb-b93c-94cca3672037?source=collection_link"
+    "_collection_link": "https://go.postman.co/collection/54369759-e5256ca0-2c51-46d7-8cdc-da5b01d5bfbf?source=collection_link"
   },
   "item": [
     {
@@ -68,6 +68,32 @@
     },
     {
       "name": "Login",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "// 1. Converti la risposta in un oggetto JSON\r",
+              "const jsonData = pm.response.json();\r",
+              "\r",
+              "// 2. Estrai il token (modifica 'access_token' in base a come risponde la tua API)\r",
+              "// Esempi comuni: jsonData.token oppure jsonData.data.token\r",
+              "const token = jsonData.access_token;\r",
+              "\r",
+              "// 3. Salva il token in una variabile d'ambiente\r",
+              "if (token) {\r",
+              "    pm.environment.set(\"token\", token);\r",
+              "    console.log(\"Token salvato con successo!\");\r",
+              "} else {\r",
+              "    console.warn(\"Token non trovato nella risposta!\");\r",
+              "}"
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        }
+      ],
       "request": {
         "method": "POST",
         "header": [],

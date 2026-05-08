@@ -21,5 +21,7 @@ RUN a2enmod rewrite
 ENV APACHE_DOCUMENT_ROOT /var/www/html/public
 RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-available/*.conf
 
-# Cartella di lavoro del container (sarà sovrascritta dal bind mount nel compose)
-WORKDIR /var/www/html
+RUN sed -ri -e 's!<Directory /var/www/>!<Directory /var/www/html/public/>\n\t\tAllowOverride All\n\t\tRequire all granted!g' /etc/apache2/apache2.conf \
+    || echo '<Directory /var/www/html/public/>\n\tOptions Indexes FollowSymLinks\n\tAllowOverride All\n\tRequire all granted\n</Directory>' >> /etc/apache2/conf-available/laravel.conf \
+    && a2enconf laravel || true
+
