@@ -2,14 +2,18 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Events\PuntoStatusChanged;
+use App\Events\StazioneStatusChanged;
 use App\Http\Controllers\Controller;
 use App\Models\Sessioni_ricarica;
+use App\Models\Stazioni;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use App\Services\QrService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Database\QueryException;
+
 
 /**
  * Controller per la gestione delle sessioni di ricarica.
@@ -40,16 +44,17 @@ class SessionController extends Controller
      */
     public function AvvioSessione(Request $request): JsonResponse
     {
-        // Validazione dei campi obbligatori: id stazione e firma HMAC/hash a 64 caratteri
+        // Validazione dei campi obbligatori: id punto e firma HMAC/hash a 64 caratteri
         $data = $request->validate([
             'id_stazione' => ['required', 'string'],
+            'id_punto'    => ['required', 'string'],
             'firma'       => ['required', 'string', 'size:64'],
         ]);
 
         $userId = $request->user()->id;
 
         // Chiave univoca del nonce in cache, legata all'utente e alla stazione specifica
-        $cacheKey = "scan_nonce:{$userId}:{$data['id_stazione']}";
+        $cacheKey = "scan_nonce:{$userId}:{$data['id_punto']}";
 
         // Cache::pull rimuove e restituisce il valore: se null il nonce è scaduto o mai emesso
         $nonceSalvato = Cache::pull($cacheKey);
@@ -58,15 +63,18 @@ class SessionController extends Controller
         }
 
         // Verifica crittografica della firma allegata al QR code
-        if (! $this->qrService->VerificaFirma($data['id_stazione'], $data['firma'])) {
+        if (! $this->qrService->VerificaFirma($data['id_punto'], $data['firma'])) {
             return response()->json(['error' => 'Qr_invalido'], 422);
         }
 
         // Invoca la stored procedure passando i parametri IN e destinando i risultati
         // a variabili di sessione MySQL (@), lette subito dopo con una SELECT
+
+        // TODO modificare la stored procedure per punto invece che stazione
+
         DB::statement('CALL sp_avvio_sessione(?, ?, ?, ?, @id_sessione, @successo, @messaggio)', [
             $userId,
-            $data['id_stazione'],
+            $data['id_punto'],
             'QR_CODE',
             null, // id_badge: null quando l'avvio avviene tramite QR e non badge fisico
         ]);
@@ -80,14 +88,25 @@ class SessionController extends Controller
             return response()->json(['error' => $result->messaggio], 409);
         }
 
-        // TODO: notificare in real-time il cambio di stato della stazione via broadcast
-        # broadcast(new StazioneStatusChanged($data['id_stazione'], 'occupata'));
+        // Notifico che lo stato di un punto è stato modificato
+        PuntoStatusChanged :: dispatch($data['id_punto'],false);
+        
+        // Controllo se il cambiamento dello stato del punto ha inciso sulla disponibilità della stazione
+        $statoStazione = Stazioni :: statoAggregatoPerPunto($data['id_punto']);
 
+        // Tutti i punti della stazione sono stati occupati, la stazione diventa occupata
+        if($statoStazione->liberi === 0)
+        {
+            StazioneStatusChanged :: dispatch($data['id_stazione'],false);
+        }
+        
         return response()->json([
             'session_id'          => $result->id,
             'reservation_timeout' => 60, // secondi entro cui il cliente deve iniziare la ricarica
         ], 201);
     }
+
+
 
     /**
      * Restituisce lo stato corrente di una sessione di ricarica attiva.
@@ -131,8 +150,12 @@ class SessionController extends Controller
      * @return JsonResponse          200 con i dati della sessione conclusa,
      *                               oppure 409 in caso di errore.
      */
-    public function InterrompiSessione(string $id_sessione): JsonResponse
+    public function InterrompiSessione(string $id_sessione,Request $request): JsonResponse
     {
+        $data = $request->validate([
+            'id_stazione' => ['required', 'string'],
+            'id_punto'    => ['required', 'string'],
+        ]);
         // Invoca la procedura di chiusura sessione e legge l'esito tramite parametri OUT
         DB::statement('CALL sp_interrompi_sessione(?, @successo, @messaggio)', [
             $id_sessione,
@@ -148,6 +171,14 @@ class SessionController extends Controller
 
         // Ricarica la sessione dal DB per restituire i dati aggiornati al termine
         $sessione = Sessioni_ricarica::findOrFail($id_sessione);
+
+        $statoStazione = Stazioni :: statoAggregatoPerPunto($data['id_punto']);
+        
+        // Si è liberato un punto, la stazione torna libera
+        if($statoStazione->liberi === 1)
+        {
+            StazioneStatusChanged :: dispatch($data['id_stazione'],true);
+        }
 
         return response()->json([
             'data' => $sessione,

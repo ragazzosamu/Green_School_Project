@@ -8,6 +8,8 @@ return new class extends Migration
     public function up(): void
     {
 
+        #Da ricontrollare tutta con nuovo sistema
+
         DB::unprepared("DROP PROCEDURE IF EXISTS sp_verifica_disponibilita");
         DB::unprepared("DROP PROCEDURE IF EXISTS sp_avvio_sessione");
         DB::unprepared("DROP PROCEDURE IF EXISTS sp_termina_sessione");
