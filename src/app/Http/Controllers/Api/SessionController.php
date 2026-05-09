@@ -54,7 +54,7 @@ class SessionController extends Controller
         $userId = $request->user()->id;
 
         // Chiave univoca del nonce in cache, legata all'utente e alla stazione specifica
-        $cacheKey = "scan_nonce:{$userId}:{$data['id_punto']}";
+        $cacheKey = "scan_nonce:{$userId}:{$data['id_stazione']}";
 
         // Cache::pull rimuove e restituisce il valore: se null il nonce è scaduto o mai emesso
         $nonceSalvato = Cache::pull($cacheKey);
@@ -63,7 +63,7 @@ class SessionController extends Controller
         }
 
         // Verifica crittografica della firma allegata al QR code
-        if (! $this->qrService->VerificaFirma($data['id_punto'], $data['firma'])) {
+        if (! $this->qrService->VerificaFirma($data['id_stazione'], $data['firma'])) {
             return response()->json(['error' => 'Qr_invalido'], 422);
         }
 

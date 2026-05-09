@@ -22,9 +22,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/scan-qr',[SessionController::class, 'AvvioSessione']);//utente legge qr con telecamera, avrà questo input: gs:{$idPunto}:{$firma}. quesre cose saranno da mandare come body json a questa rotta.
 
     // In futuro da modificare per gamification
-    Route::get('session/{id}',[SessionController::class, 'show']);
+    Route::get('/session/{id}',[SessionController::class, 'show']);
 
-    Route::post('session/{id}/stop',[SessionController::class, 'InterrompiSessione']);
+    Route::post('/session/{id}/stop',[SessionController::class, 'InterrompiSessione']);
     
     Route::post('/logout', [AuthController::class, 'logout']);
 });

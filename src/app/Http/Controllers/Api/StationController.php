@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Cache;
 
 class StationController extends Controller
 {
-    
+    #TODO mettere se è occupata completamente o no
     public function all(Request $request): JsonResponse
     { 
         /**
@@ -43,7 +43,7 @@ class StationController extends Controller
 
 
     
-    public function show(string $id, Request $request): JsonResponse
+    public function show(string $idStazione, Request $request): JsonResponse
     {
         /**
         * Recupera i dettagli di una singola stazione tramite il suo ID.
@@ -54,12 +54,12 @@ class StationController extends Controller
         * @return JsonResponse Risposta JSON con i dati della stazione o messaggio di errore.
         */
 
-        try { //chiamo questa api per prende i dati della stazione 
-            $stazione = Stazioni::with('puntiRicarica')->findOrFail($id);
+        try {
+            $stazione = Stazioni::with('puntiRicarica')->findOrFail($idStazione);
 
             $nonce = bin2hex(random_bytes(16));
             $userId = $request->user()->id_utente;
-            $cacheKey = "scan_nonce:{$userId}:{$id}";
+            $cacheKey = "scan_nonce:{$userId}:{$idStazione}";
 
             Cache::put($cacheKey, $nonce, now()->addMinutes(2));
 
