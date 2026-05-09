@@ -23,7 +23,6 @@
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {{-- Usiamo la relazione corretta: puntiRicarica --}}
             @foreach($stazione->puntiRicarica->take(2) as $punto)
                 <div class="border-2 rounded-[2rem] p-6 flex justify-between items-center transition-all 
                     {{ $punto->stato_hardware === 'online' ? 'border-green-100 bg-green-50' : 'bg-gray-100 opacity-60 border-transparent' }}">
@@ -60,28 +59,26 @@
         puntoCorrente = idPunto;
         document.getElementById('qr-reader-container').classList.remove('hidden');
         
-        // Inizializza lo scanner
         html5QrCode = new Html5Qrcode("reader");
         
         html5QrCode.start(
             { facingMode: "environment" }, 
             { fps: 10, qrbox: { width: 250, height: 250 } },
             (decodedText) => {
-                // Successo: leggiamo il testo del QR
                 const parts = decodedText.split(':');
-                // Formato: gs:ID_PUNTO:FIRMA
-                if(parts[0] === 'gs' && parts[1] === puntoCorrente) {
-                    const firma = parts[2];
-                    inviaDati(puntoCorrente, firma);
+                const idStazionePagina = "{{ $stazione->id_stazione }}";
+
+                if(parts[0] === 'gs' && parts[1] === idStazionePagina) {
+                    // QUI PASSIAMO 3 ARGOMENTI: id_punto, firma, id_stazione
+                    inviaDati(puntoCorrente, parts[2], idStazionePagina); 
                     chiudiScanner();
-                } else { //debug che scrive cosa ha letto lui
-                    alert("Questo QR non corrisponde alla presa selezionata!");
+                } else {
+                    alert("Questo QR non corrisponde a questa stazione!");
                 }
             },
-            (errorMessage) => { /* Ignora errori di scansione continua */ }
+            (errorMessage) => { }
         ).catch(err => {
             console.error("Errore Camera:", err);
-            alert("Impossibile accedere alla fotocamera. Controlla i permessi del browser.");
             chiudiScanner();
         });
     }
@@ -98,9 +95,10 @@
         }
     }
 
-    async function inviaDati(id, firma) {
+    // MODIFICATA: Ora accetta anche idStazione
+    async function inviaDati(idPunto, firma, idStazione) {
         try {
-            const response = await fetch('/api/scansione-qr', {
+            const response = await fetch('/api/scan-qr', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -108,7 +106,8 @@
                     'Accept': 'application/json'
                 },
                 body: JSON.stringify({
-                    id_punto: id,
+                    id_punto: idPunto,
+                    id_stazione: idStazione,
                     firma: firma
                 })
             });
@@ -116,13 +115,15 @@
             const data = await response.json();
 
             if (response.ok) {
-                // Vai alla pagina della sessione attiva (già configurata in web.php)
                 window.location.href = '/session/' + data.session_uuid;
             } else {
-                alert("Errore API: " + (data.message || "Riprova"));
+                // MODIFICA QUI: mostriamo l'errore reale che arriva dal Controller
+                console.error("Dettaglio Errore:", data);
+                alert("ERRORE SERVER: " + (data.message || data.error || JSON.stringify(data)));
             }
         } catch (error) {
-            console.error("Errore nell'invio:", error);
+            console.error("Errore di rete:", error);
+            alert("Errore di rete: controlla la console.");
         }
     }
 </script>
