@@ -41,6 +41,8 @@
      * il codice non si blocca e i pallini vengono comunque caricati.
      */
     try {
+
+        // connessione a Reverb
         window.Pusher = Pusher;
         window.Echo = new Echo({
             broadcaster: 'reverb',
@@ -51,21 +53,31 @@
             enabledTransports: ['ws', 'wss'],
         });
 
-        // Ascolto cambio stato in tempo reale
-        window.Echo.channel('stazioni')
-            .listen('StazioneStatusChanged', (e) => {
-                console.log('Aggiornamento real-time ricevuto:', e);
-                const marker = markersMap[e.id_punto];
-                if (marker) {
-                    // Cambia colore al pallino
-                    marker.setStyle({
-                        fillColor: getMarkerColor(e.nuovo_stato)
-                    });
-                    // Cambia il testo nel popup (se aperto)
-                    const statusSpan = document.querySelector(`.status-text-${e.id_punto}`);
-                    if (statusSpan) statusSpan.innerText = e.nuovo_stato;
-                }
-            });
+        // Ascolto canale mappa, in cui vengono aggiornati i dettagli delle stazioni e dei punti
+        canaleMappa.listen('.punto.status', (e) => {
+            console.log('Punto aggiornato:', e);
+            const marker = markersMap[e.id_punto];
+            if (marker) {
+                marker.setStyle({
+                    fillColor: getMarkerColor(e.libera)
+                });
+                // Qua viene aggiornata la view
+                const statusSpan = document.querySelector(`.status-text-${e.id_punto}`);
+                if (statusSpan) statusSpan.innerText = e.libera ? 'Libero' : 'Occupato';
+            }
+        });
+
+        // Evento 2: cambio stato aggregato della stazione
+        canaleMappa.listen('.stazione.status', (e) => {
+            console.log('Stazione aggiornata:', e);
+            const stazioneMarker = stazioniMarkersMap[e.id_stazione];
+            if (stazioneMarker) {
+                stazioneMarker.setStyle({
+                    // Qua viene aggiornata la view
+                    fillColor: e.disponibile ? '#22c55e' : '#ef4444'
+                });
+            }
+        });
             
         console.log("Sistema Real-time inizializzato.");
     } catch (error) {

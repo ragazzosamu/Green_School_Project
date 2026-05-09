@@ -43,7 +43,7 @@ class StazioneStatusChanged
     {
         return [
             'id_stazione'   => $this->idStazione,
-            'stato'      => $this->stato,
+            'libera'        => $this->stato,
             'data_cambiamento'  => now()->timestamp,
         ];
 

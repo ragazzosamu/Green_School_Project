@@ -47,8 +47,8 @@ class PuntoStatusChanged
     public function broadcastWith(): array
     {
         return [
-            'id_stazione'   => $this->idPunto,
-            'stato'         => $this->stato,
+            'id_punto'   => $this->idPunto,
+            'libera'     => $this->stato,
             'data_cambiamento'  => now()->timestamp,
         ];
     }

@@ -70,8 +70,6 @@ class SessionController extends Controller
         // Invoca la stored procedure passando i parametri IN e destinando i risultati
         // a variabili di sessione MySQL (@), lette subito dopo con una SELECT
 
-        // TODO modificare la stored procedure per punto invece che stazione
-
         DB::statement('CALL sp_avvio_sessione(?, ?, ?, ?, @id_sessione, @successo, @messaggio)', [
             $userId,
             $data['id_punto'],

@@ -7,14 +7,13 @@ return new class extends Migration
 {
     public function up(): void
     {
-
-        #Da ricontrollare tutta con nuovo sistema
-
         DB::unprepared("DROP PROCEDURE IF EXISTS sp_verifica_disponibilita");
         DB::unprepared("DROP PROCEDURE IF EXISTS sp_avvio_sessione");
         DB::unprepared("DROP PROCEDURE IF EXISTS sp_termina_sessione");
-        
-        // 1. Procedura VERIFICA DISPONIBILITÀ
+
+        // ============================================================
+        // 1. VERIFICA DISPONIBILITÀ
+        // ============================================================
         DB::unprepared("
             CREATE PROCEDURE sp_verifica_disponibilita(
                 IN p_id_punto CHAR(36),
@@ -24,14 +23,13 @@ return new class extends Migration
             BEGIN
                 DECLARE v_stato_hardware VARCHAR(30);
                 DECLARE v_heartbeat TIMESTAMP;
-                DECLARE v_sessione_attiva CHAR(36);
-                DECLARE v_occupante_nome VARCHAR(100);
+                DECLARE v_libera TINYINT(1);
                 DECLARE v_no_data INT DEFAULT 0;
 
                 DECLARE CONTINUE HANDLER FOR NOT FOUND SET v_no_data = 1;
 
-                SELECT stato_hardware, data_ultimo_heartbeat
-                INTO v_stato_hardware, v_heartbeat
+                SELECT stato_hardware, data_ultimo_heartbeat, libera
+                INTO v_stato_hardware, v_heartbeat, v_libera
                 FROM punti_ricarica
                 WHERE id_punto = p_id_punto
                 FOR UPDATE;
@@ -45,27 +43,19 @@ return new class extends Migration
                 ELSEIF v_heartbeat IS NULL OR v_heartbeat < (NOW() - INTERVAL 5 MINUTE) THEN
                     SET p_disponibile = 0;
                     SET p_messaggio = 'Colonnina offline o non raggiungibile';
+                ELSEIF v_libera = 0 THEN
+                    SET p_disponibile = 0;
+                    SET p_messaggio = 'Colonnina occupata';
                 ELSE
-                    SET v_no_data = 0;
-                    SELECT sr.id_sessione, u.nome
-                    INTO v_sessione_attiva, v_occupante_nome
-                    FROM sessioni_ricarica sr
-                    LEFT JOIN utenti u ON sr.id_utente = u.id_utente
-                    WHERE sr.id_punto = p_id_punto AND sr.data_fine IS NULL
-                    LIMIT 1;
-
-                    IF v_sessione_attiva IS NOT NULL THEN
-                        SET p_disponibile = 0;
-                        SET p_messaggio = CONCAT('Colonnina occupata', IF(v_occupante_nome IS NOT NULL, CONCAT(' da ', v_occupante_nome), ''));
-                    ELSE
-                        SET p_disponibile = 1;
-                        SET p_messaggio = 'Colonnina disponibile';
-                    END IF;
+                    SET p_disponibile = 1;
+                    SET p_messaggio = 'Colonnina disponibile';
                 END IF;
             END
         ");
 
-        // 2. Procedura AVVIO SESSIONE
+        // ============================================================
+        // 2. AVVIO SESSIONE
+        // ============================================================
         DB::unprepared("
             CREATE PROCEDURE sp_avvio_sessione(
                 IN p_id_utente CHAR(36),
@@ -88,13 +78,14 @@ return new class extends Migration
                 END;
 
                 START TRANSACTION;
+
                 CALL sp_verifica_disponibilita(p_id_punto, v_disponibile, p_messaggio);
 
                 IF v_disponibile = 0 THEN
                     SET p_successo = 0;
                     ROLLBACK;
                 ELSE
-                    -- Usiamo percentuale_carica che esiste nella tua tabella accumulatori_stazione
+                    -- Verifica batteria stazione (se presente accumulatore)
                     SELECT (acc.percentuale_carica > 10.00 OR acc.id_accumulatore IS NULL)
                     INTO v_batteria_sufficiente
                     FROM punti_ricarica p
@@ -108,11 +99,21 @@ return new class extends Migration
                         ROLLBACK;
                     ELSE
                         SET p_id_sessione = UUID();
+
+                        -- Inserisci la nuova sessione
                         INSERT INTO sessioni_ricarica (
-                            id_sessione, id_utente, id_punto, id_badge_usato, metodo_avvio, data_inizio, stato_pagamento
+                            id_sessione, id_utente, id_punto, id_badge_usato,
+                            metodo_avvio, data_inizio, stato_pagamento
                         ) VALUES (
-                            p_id_sessione, p_id_utente, p_id_punto, p_id_badge, p_metodo_avvio, NOW(), 'non_richiesto'
+                            p_id_sessione, p_id_utente, p_id_punto, p_id_badge,
+                            p_metodo_avvio, NOW(), 'non_richiesto'
                         );
+
+                        -- Marca il punto come occupato (fonte di verità nel DB)
+                        UPDATE punti_ricarica
+                        SET libera = 0
+                        WHERE id_punto = p_id_punto;
+
                         SET p_successo = 1;
                         SET p_messaggio = 'Sessione avviata';
                         COMMIT;
@@ -121,7 +122,9 @@ return new class extends Migration
             END
         ");
 
-        // 3. Procedura TERMINA SESSIONE
+        // ============================================================
+        // 3. TERMINA SESSIONE
+        // ============================================================
         DB::unprepared("
             CREATE PROCEDURE sp_termina_sessione(
                 IN p_id_sessione CHAR(36),
@@ -142,7 +145,9 @@ return new class extends Migration
 
                 START TRANSACTION;
 
-                SELECT id_punto, data_inizio INTO v_id_punto, v_data_inizio
+                -- Recupera dati sessione (lock pessimistico sulla riga)
+                SELECT id_punto, data_inizio
+                INTO v_id_punto, v_data_inizio
                 FROM sessioni_ricarica
                 WHERE id_sessione = p_id_sessione AND data_fine IS NULL
                 FOR UPDATE;
@@ -151,30 +156,39 @@ return new class extends Migration
                     SET p_successo = 0;
                     ROLLBACK;
                 ELSE
-                    -- Prendi tariffa da punti_ricarica
+                    -- Tariffa di default dal punto
                     SELECT tariffa_predefinita INTO v_tariffa
                     FROM punti_ricarica WHERE id_punto = v_id_punto;
 
+                    -- Se non c'è, cerca nelle tariffe orarie
                     IF v_tariffa IS NULL THEN
-                        -- Prova a cercarla nelle tariffe orarie
                         SELECT prezzo_kwh INTO v_tariffa
                         FROM tariffe_orarie
                         WHERE id_punto = v_id_punto
                           AND giorno_settimana = (DAYOFWEEK(v_data_inizio) - 1)
                           AND TIME(v_data_inizio) BETWEEN ora_inizio AND ora_fine
                         LIMIT 1;
-                        
-                        IF v_tariffa IS NULL THEN SET v_tariffa = 0.50; END IF;
+
+                        -- Fallback finale
+                        IF v_tariffa IS NULL THEN
+                            SET v_tariffa = 0.50;
+                        END IF;
                     END IF;
 
                     SET p_costo_calcolato = ROUND(p_quantita_kwh * v_tariffa, 2);
 
+                    -- Chiudi la sessione
                     UPDATE sessioni_ricarica
                     SET data_fine = NOW(),
                         quantita_kwh = p_quantita_kwh,
                         costo_totale = p_costo_calcolato,
                         stato_pagamento = IF(p_costo_calcolato > 0, 'in_attesa_pagamento', 'gratuito')
                     WHERE id_sessione = p_id_sessione;
+
+                    -- Rilascia il punto
+                    UPDATE punti_ricarica
+                    SET libera = 1
+                    WHERE id_punto = v_id_punto;
 
                     SET p_successo = 1;
                     COMMIT;
