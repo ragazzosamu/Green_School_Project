@@ -10,8 +10,7 @@ return new class extends Migration
     {
         Schema::table('stazioni', function (Blueprint $table) {
             $table->boolean('libera')
-                  ->default(true)
-                  ->after('stato_hardware');
+                  ->default(true);
 
         });
     }

@@ -22,9 +22,9 @@
 <script src="https://cdn.jsdelivr.net/npm/laravel-echo@1.15.3/dist/echo.iife.js"></script>
 
 <script>
-    // 1. OGGETTO PER MEMORIZZARE I MARKER (Per Real-time)
+    // 1. OGGETTO PER MEMORIZZARE I MARKER (Punto 2.10)
     const markersMap = {}; 
-    const stazioniMarkersMap = {};
+    const stazioniMarkersMap = {}; // Indice per aggiornamenti aggregati stazione
 
     // --- VARIABILI DI AMBIENTE ---
     const apiToken = "{{ $api_token }}";
@@ -33,9 +33,12 @@
     const zoomLevel = {{ $zoom ?? 14 }};
 
     /**
-     * CONFIGURAZIONE REAL-TIME PROTETTA
+     * CONFIGURAZIONE REAL-TIME PROTETTA (Punto 2.10)
+     * Avvolgiamo tutto in un try-catch: se Reverb non è configurato bene,
+     * il codice non si blocca e i pallini vengono comunque caricati.
      */
     try {
+        // Connessione a Reverb
         window.Pusher = Pusher;
         window.Echo = new Echo({
             broadcaster: 'reverb',
@@ -46,26 +49,31 @@
             enabledTransports: ['ws', 'wss'],
         });
 
-        // Supponendo che il canale si chiami 'mappa'
+        // Definizione canale (mancava nel codice del compagno, aggiunta per far funzionare i listen)
         const canaleMappa = window.Echo.channel('mappa');
 
+        // Ascolto canale mappa, in cui vengono aggiornati i dettagli delle stazioni e dei punti
         canaleMappa.listen('.punto.status', (e) => {
             console.log('Punto aggiornato:', e);
             const marker = markersMap[e.id_punto];
             if (marker) {
+                // Usiamo la logica: se libera allora verde, altrimenti rosso
                 marker.setStyle({
-                    fillColor: getMarkerColor(e.libera ? 'libera' : 'occupata')
+                    fillColor: e.libera ? '#22c55e' : '#ef4444'
                 });
+                // Qua viene aggiornata la view
                 const statusSpan = document.querySelector(`.status-text-${e.id_punto}`);
                 if (statusSpan) statusSpan.innerText = e.libera ? 'Libero' : 'Occupato';
             }
         });
 
+        // Evento 2: cambio stato aggregato della stazione
         canaleMappa.listen('.stazione.status', (e) => {
             console.log('Stazione aggiornata:', e);
             const stazioneMarker = stazioniMarkersMap[e.id_stazione];
             if (stazioneMarker) {
                 stazioneMarker.setStyle({
+                    // Qua viene aggiornata la view
                     fillColor: e.disponibile ? '#22c55e' : '#ef4444'
                 });
             }
@@ -83,18 +91,24 @@
         attribution: '© OpenStreetMap contributors'
     }).addTo(map);
 
-    function getMarkerColor(stato) {
-        if(!stato) return '#9ca3af';
-        const s = stato.toLowerCase();
-        if (s === 'libera' || s === 'online') return '#22c55e';
-        if (s === 'occupata') return '#ef4444';
-        return '#9ca3af';
+    /**
+     * NUOVA LOGICA COLORE (Rispetta la tua colonna 'libera' e 'stato_hardware')
+     */
+    function getMarkerColor(punto) {
+        if (!punto) return '#9ca3af';
+        
+        // Se l'hardware non è online, è grigio (Offline)
+        if (punto.stato_hardware !== 'online') return '#9ca3af';
+
+        // Se è online, guardiamo la colonna libera (1 = verde, 0 = rosso)
+        return (punto.libera == 1) ? '#22c55e' : '#ef4444';
     }
 
     /**
      * FUNZIONE CARICAMENTO STAZIONI
      */
     async function loadStations() {
+        console.log("Richiesta stazioni in corso...");
         try {
             const response = await fetch('/api/stations', {
                 method: 'GET',
@@ -112,53 +126,53 @@
             stazioni.forEach(stazione => {
                 if (stazione.punti_ricarica && stazione.punti_ricarica.length > 0) {
                     stazione.punti_ricarica.forEach(punto => {
-                        // Creazione marker
+                        // Creazione marker usando la logica hardware/libera
                         const marker = L.circleMarker([stazione.latitudine, stazione.longitudine], {
                             radius: 10,
-                            fillColor: getMarkerColor(punto.stato || punto.stato_hardware),
+                            fillColor: getMarkerColor(punto),
                             color: "#fff",
                             weight: 2,
                             opacity: 1,
                             fillOpacity: 0.8
                         }).addTo(map);
 
-                        // Salvataggio nell'indice per il real-time
+                        // Salvataggio nell'indice per il real-time (Punto 2.10)
                         markersMap[punto.id_punto] = marker;
                         stazioniMarkersMap[stazione.id_stazione] = marker;
 
-                        // Content del Popup (Modifiche compagno)
+                        // Calcolo testo stato per il popup
+                        let statoTesto = 'Offline';
+                        if(punto.stato_hardware === 'online') {
+                            statoTesto = (punto.libera == 1) ? 'Libero' : 'Occupato';
+                        }
+
                         const popupContent = `
                             <div class="p-2 text-center">
                                 <h3 class="font-bold text-gray-800">${stazione.nome}</h3>
                                 <p class="text-xs text-gray-500 mb-1">Codice: ${punto.id_punto}</p>
-                                <p class="text-sm mb-3">Stato: <span class="status-text-${punto.id_punto} font-semibold">${punto.stato || 'N/D'}</span></p>
-                                <button onclick="startSimulatedCharge('${punto.id_punto}')" 
-                                        class="bg-green-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-green-700 transition w-full mb-2">
-                                    AVVIA RICARICA SIMULATA
-                                </button>
+                                <p class="text-sm mb-3">Stato: <span class="status-text-${punto.id_punto} font-semibold">${statoTesto}</span></p>
+                                
                                 <button onclick="goToDetail('${stazione.id_stazione}')" 
-                                        class="bg-blue-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-blue-700 transition w-full">
+                                        class="bg-blue-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-blue-700 transition w-full mb-2">
                                     VAI AL DETTAGLIO
+                                </button>
+
+                                <button onclick="startSimulatedCharge('${punto.id_punto}')" 
+                                        class="bg-green-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-green-700 transition w-full">
+                                    AVVIA RICARICA SIMULATA
                                 </button>
                             </div>
                         `;
                         marker.bindPopup(popupContent);
-
-                        // Manteniamo la tua funzione originale: click sul pallino = vai al dettaglio
-                        marker.on('click', function(e) {
-                            // Se vuoi che il click apra solo il popup invece di sloggare subito alla pagina, 
-                            // commenta la riga sotto. Se vuoi entrambi, lasciala.
-                            // window.location.href = '/stazione/' + stazione.id_stazione;
-                        });
                     });
                 }
             });
+            console.log("Stazioni caricate con successo.");
         } catch (error) {
-            console.error('Errore caricamento stazioni:', error);
+            console.error('Errore:', error);
         }
     }
 
-    // Funzione per il redirect (tua vecchia logica)
     function goToDetail(idStazione) {
         window.location.href = '/stazione/' + idStazione;
     }
