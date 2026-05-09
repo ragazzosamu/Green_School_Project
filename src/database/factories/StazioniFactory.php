@@ -30,6 +30,7 @@ class StazioniFactory extends Factory
             'longitudine' => $lon,
             'coordinata' => DB::raw("ST_GeomFromText('POINT($lon $lat)')"),
             'tipo_area' => 'pubblico',
+            'token' => bin2hex(random_bytes(64)),
         ];
     }
 }
