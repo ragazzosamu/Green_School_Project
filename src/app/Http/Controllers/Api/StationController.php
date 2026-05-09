@@ -54,7 +54,7 @@ class StationController extends Controller
         * @return JsonResponse Risposta JSON con i dati della stazione o messaggio di errore.
         */
 
-        try {
+        try { //chiamo questa api per prende i dati della stazione 
             $stazione = Stazioni::with('puntiRicarica')->findOrFail($id);
 
             $nonce = bin2hex(random_bytes(16));

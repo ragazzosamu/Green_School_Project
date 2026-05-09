@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\WebAuthController;
+use App\Models\Stazioni; // <--- Importante per caricare i dati nella rotta
 
 // Se l'utente va all'indirizzo base (/), lo mandiamo automaticamente al login
 Route::get('/', function () {
@@ -21,10 +22,20 @@ Route::get('/map', function () {
         'center_lng' => config('map.center_lng'),
         'zoom' => config('map.default_zoom'),
     ]);
-})->middleware('auth');
+})->name('map')->middleware('auth'); // Aggiunto ->name('map') per comodità nei link
 
-// --- AGGIUNTA PUNTO 2.9: ROTTA SESSIONE ATTIVA ---
-// Questa rotta serve per visualizzare la pagina della ricarica in corso
+// --- NUOVA ROTTA: DETTAGLIO COLONNINA (PUNTI DI RICARICA) ---
+// Questa è la rotta che serve per aprire la pagina delle prese quando clicchi sul pallino
+Route::get('/stazione/{id}', function ($id) {
+    // Carichiamo la stazione con tutte le sue prese (puntiRicarica)
+    $stazione = Stazioni::with('puntiRicarica')->findOrFail($id);
+    
+    return view('station-detail', [
+        'stazione' => $stazione
+    ]);
+})->name('station.show')->middleware('auth');
+
+// --- ROTTA SESSIONE ATTIVA ---
 Route::get('/session/{uuid}', function ($uuid) {
     return view('session-active', [
         'session_uuid' => $uuid

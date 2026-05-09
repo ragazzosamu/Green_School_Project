@@ -22,27 +22,20 @@
 <script src="https://cdn.jsdelivr.net/npm/laravel-echo@1.15.3/dist/echo.iife.js"></script>
 
 <script>
-    // 1. OGGETTO PER MEMORIZZARE I MARKER (Punto 2.10)
+    // 1. OGGETTO PER MEMORIZZARE I MARKER (Per Real-time)
     const markersMap = {}; 
+    const stazioniMarkersMap = {};
 
     // --- VARIABILI DI AMBIENTE ---
-    // @ts-ignore
     const apiToken = "{{ $api_token }}";
-    // @ts-ignore
     const centerLat = {{ $center_lat ?? 45.4642 }};
-    // @ts-ignore
     const centerLng = {{ $center_lng ?? 9.1900 }};
-    // @ts-ignore
     const zoomLevel = {{ $zoom ?? 14 }};
 
     /**
-     * CONFIGURAZIONE REAL-TIME PROTETTA (Punto 2.10)
-     * Avvolgiamo tutto in un try-catch: se Reverb non è configurato bene,
-     * il codice non si blocca e i pallini vengono comunque caricati.
+     * CONFIGURAZIONE REAL-TIME PROTETTA
      */
     try {
-
-        // connessione a Reverb
         window.Pusher = Pusher;
         window.Echo = new Echo({
             broadcaster: 'reverb',
@@ -53,27 +46,26 @@
             enabledTransports: ['ws', 'wss'],
         });
 
-        // Ascolto canale mappa, in cui vengono aggiornati i dettagli delle stazioni e dei punti
+        // Supponendo che il canale si chiami 'mappa'
+        const canaleMappa = window.Echo.channel('mappa');
+
         canaleMappa.listen('.punto.status', (e) => {
             console.log('Punto aggiornato:', e);
             const marker = markersMap[e.id_punto];
             if (marker) {
                 marker.setStyle({
-                    fillColor: getMarkerColor(e.libera)
+                    fillColor: getMarkerColor(e.libera ? 'libera' : 'occupata')
                 });
-                // Qua viene aggiornata la view
                 const statusSpan = document.querySelector(`.status-text-${e.id_punto}`);
                 if (statusSpan) statusSpan.innerText = e.libera ? 'Libero' : 'Occupato';
             }
         });
 
-        // Evento 2: cambio stato aggregato della stazione
         canaleMappa.listen('.stazione.status', (e) => {
             console.log('Stazione aggiornata:', e);
             const stazioneMarker = stazioniMarkersMap[e.id_stazione];
             if (stazioneMarker) {
                 stazioneMarker.setStyle({
-                    // Qua viene aggiornata la view
                     fillColor: e.disponibile ? '#22c55e' : '#ef4444'
                 });
             }
@@ -93,18 +85,16 @@
 
     function getMarkerColor(stato) {
         if(!stato) return '#9ca3af';
-        switch(stato.toLowerCase()) {
-            case 'libera': return '#22c55e';
-            case 'occupata': return '#ef4444';
-            default: return '#9ca3af';
-        }
+        const s = stato.toLowerCase();
+        if (s === 'libera' || s === 'online') return '#22c55e';
+        if (s === 'occupata') return '#ef4444';
+        return '#9ca3af';
     }
 
     /**
      * FUNZIONE CARICAMENTO STAZIONI
      */
     async function loadStations() {
-        console.log("Richiesta stazioni in corso...");
         try {
             const response = await fetch('/api/stations', {
                 method: 'GET',
@@ -125,7 +115,7 @@
                         // Creazione marker
                         const marker = L.circleMarker([stazione.latitudine, stazione.longitudine], {
                             radius: 10,
-                            fillColor: getMarkerColor(punto.stato),
+                            fillColor: getMarkerColor(punto.stato || punto.stato_hardware),
                             color: "#fff",
                             weight: 2,
                             opacity: 1,
@@ -134,26 +124,43 @@
 
                         // Salvataggio nell'indice per il real-time
                         markersMap[punto.id_punto] = marker;
+                        stazioniMarkersMap[stazione.id_stazione] = marker;
 
+                        // Content del Popup (Modifiche compagno)
                         const popupContent = `
                             <div class="p-2 text-center">
                                 <h3 class="font-bold text-gray-800">${stazione.nome}</h3>
                                 <p class="text-xs text-gray-500 mb-1">Codice: ${punto.id_punto}</p>
-                                <p class="text-sm mb-3">Stato: <span class="status-text-${punto.id_punto} font-semibold">${punto.stato}</span></p>
+                                <p class="text-sm mb-3">Stato: <span class="status-text-${punto.id_punto} font-semibold">${punto.stato || 'N/D'}</span></p>
                                 <button onclick="startSimulatedCharge('${punto.id_punto}')" 
-                                        class="bg-green-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-green-700 transition w-full">
+                                        class="bg-green-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-green-700 transition w-full mb-2">
                                     AVVIA RICARICA SIMULATA
+                                </button>
+                                <button onclick="goToDetail('${stazione.id_stazione}')" 
+                                        class="bg-blue-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-blue-700 transition w-full">
+                                    VAI AL DETTAGLIO
                                 </button>
                             </div>
                         `;
                         marker.bindPopup(popupContent);
+
+                        // Manteniamo la tua funzione originale: click sul pallino = vai al dettaglio
+                        marker.on('click', function(e) {
+                            // Se vuoi che il click apra solo il popup invece di sloggare subito alla pagina, 
+                            // commenta la riga sotto. Se vuoi entrambi, lasciala.
+                            // window.location.href = '/stazione/' + stazione.id_stazione;
+                        });
                     });
                 }
             });
-            console.log("Stazioni caricate con successo.");
         } catch (error) {
-            console.error('Errore:', error);
+            console.error('Errore caricamento stazioni:', error);
         }
+    }
+
+    // Funzione per il redirect (tua vecchia logica)
+    function goToDetail(idStazione) {
+        window.location.href = '/stazione/' + idStazione;
     }
 
     function startSimulatedCharge(idPunto) {
