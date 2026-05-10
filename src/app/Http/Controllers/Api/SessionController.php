@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Cache;
 use App\Services\QrService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Database\QueryException;
-use Illuminate\Support\Facades\Log;
+
 
 /**
  * Controller per la gestione delle sessioni di ricarica.
@@ -29,15 +29,15 @@ class SessionController extends Controller
      *
      * - Valida i dati in ingresso (id_stazione e firma QR).
      * - Verifica che il nonce monouso associato all'utente e alla stazione
-     *   sia presente in cache (anti-replay), consumandolo immediatamente.
+     * sia presente in cache (anti-replay), consumandolo immediatamente.
      * - Controlla la validità della firma del QR code tramite QrService.
      * - Invoca la stored procedure `sp_avvio_sessione` che internamente:
-     *     · acquisisce un lock FOR UPDATE sulla stazione
-     *     · verifica disponibilità e livello batteria
-     *     · inserisce la riga in sessioni_ricarica se tutto è ok
+     * · acquisisce un lock FOR UPDATE sulla stazione
+     * · verifica disponibilità e livello batteria
+     * · inserisce la riga in sessioni_ricarica se tutto è ok
      * - Legge i parametri OUT della procedura per determinare esito e messaggio.
      * - Restituisce 201 con session_id in caso di successo,
-     *   oppure 422/409 con il messaggio descrittivo in caso di errore.
+     * oppure 422/409 con il messaggio descrittivo in caso di errore.
      *
      * @param  Request  $request  Richiesta HTTP con i campi `id_stazione` e `firma`.
      * @return JsonResponse
@@ -51,25 +51,16 @@ class SessionController extends Controller
             'firma'       => ['required', 'string', 'size:64'],
         ]);
 
-        $userId = $request->user()->id_utente;
+        $userId = $request->user()->id;
 
         // Chiave univoca del nonce in cache, legata all'utente e alla stazione specifica
         $cacheKey = "scan_nonce:{$userId}:{$data['id_stazione']}";
-        $nonceSalvato = Cache::pull($cacheKey);
-
-        Log::info('[NONCE CERCATO]', [
-            'userId'     => $userId,
-            'idStazione' => $data['id_stazione'],
-            'cacheKey'   => $cacheKey,
-        ]);
 
         // Cache::pull rimuove e restituisce il valore: se null il nonce è scaduto o mai emesso
-        
+        $nonceSalvato = Cache::pull($cacheKey);
         if ($nonceSalvato === null) {
             return response()->json(['error' => 'Nonce_invalido'], 422);
         }
-
-        
 
         // Verifica crittografica della firma allegata al QR code
         if (! $this->qrService->VerificaFirma($data['id_stazione'], $data['firma'])) {
@@ -109,6 +100,7 @@ class SessionController extends Controller
         
         return response()->json([
             'session_id'          => $result->id,
+            'session_uuid'        => $result->id, // Aggiunto per permettere al JS di fare il redirect
             'reservation_timeout' => 60, // secondi entro cui il cliente deve iniziare la ricarica
         ], 201);
     }
@@ -121,7 +113,7 @@ class SessionController extends Controller
      * - Carica la sessione tramite il suo ID (404 automatico se non esiste).
      * - Calcola il tempo trascorso dall'inizio della sessione in minuti.
      * - Restituisce i kWh erogati e il tempo trascorso.
-     *   (Il costo parziale è momentaneamente commentato in attesa della logica tariffaria.)
+     * (Il costo parziale è momentaneamente commentato in attesa della logica tariffaria.)
      *
      * @param  string  $id_sessione  Identificativo della sessione da interrogare.
      * @return JsonResponse          200 con kwh_erogati e tempo_trascorso.
@@ -151,11 +143,11 @@ class SessionController extends Controller
      * - Legge i parametri OUT per determinare l'esito dell'operazione.
      * - In caso di errore restituisce 409 con il messaggio dalla procedura.
      * - Se la procedura va a buon fine, ricarica e restituisce i dati aggiornati
-     *   della sessione (kWh finali, durata, ecc.).
+     * della sessione (kWh finali, durata, ecc.).
      *
      * @param  string  $id_sessione  Identificativo della sessione da interrompere.
      * @return JsonResponse          200 con i dati della sessione conclusa,
-     *                               oppure 409 in caso di errore.
+     * oppure 409 in caso di errore.
      */
     public function InterrompiSessione(string $id_sessione,Request $request): JsonResponse
     {

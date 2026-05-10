@@ -22,23 +22,14 @@
 <script src="https://cdn.jsdelivr.net/npm/laravel-echo@1.15.3/dist/echo.iife.js"></script>
 
 <script>
-    // 1. OGGETTO PER MEMORIZZARE I MARKER (Punto 2.10)
-    const markersMap = {}; 
-    const stazioniMarkersMap = {}; // Indice per aggiornamenti aggregati stazione
+    const stazioniMarkersMap = {}; 
 
-    // --- VARIABILI DI AMBIENTE ---
     const apiToken = "{{ $api_token }}";
     const centerLat = {{ $center_lat ?? 45.4642 }};
     const centerLng = {{ $center_lng ?? 9.1900 }};
     const zoomLevel = {{ $zoom ?? 14 }};
 
-    /**
-     * CONFIGURAZIONE REAL-TIME PROTETTA (Punto 2.10)
-     * Avvolgiamo tutto in un try-catch: se Reverb non è configurato bene,
-     * il codice non si blocca e i pallini vengono comunque caricati.
-     */
     try {
-        // Connessione a Reverb
         window.Pusher = Pusher;
         window.Echo = new Echo({
             broadcaster: 'reverb',
@@ -49,66 +40,36 @@
             enabledTransports: ['ws', 'wss'],
         });
 
-        // Definizione canale (mancava nel codice del compagno, aggiunta per far funzionare i listen)
         const canaleMappa = window.Echo.channel('mappa');
 
-        // Ascolto canale mappa, in cui vengono aggiornati i dettagli delle stazioni e dei punti
-        canaleMappa.listen('.punto.status', (e) => {
-            console.log('Punto aggiornato:', e);
-            const marker = markersMap[e.id_punto];
-            if (marker) {
-                // Usiamo la logica: se libera allora verde, altrimenti rosso
-                marker.setStyle({
-                    fillColor: e.libera ? '#22c55e' : '#ef4444'
-                });
-                // Qua viene aggiornata la view
-                const statusSpan = document.querySelector(`.status-text-${e.id_punto}`);
-                if (statusSpan) statusSpan.innerText = e.libera ? 'Libero' : 'Occupato';
-            }
-        });
-
-        // Evento 2: cambio stato aggregato della stazione
         canaleMappa.listen('.stazione.status', (e) => {
-            console.log('Stazione aggiornata:', e);
             const stazioneMarker = stazioniMarkersMap[e.id_stazione];
             if (stazioneMarker) {
                 stazioneMarker.setStyle({
-                    // Qua viene aggiornata la view
                     fillColor: e.disponibile ? '#22c55e' : '#ef4444'
                 });
             }
         });
-            
-        console.log("Sistema Real-time inizializzato.");
     } catch (error) {
-        console.error("Errore Echo: la mappa funzionerà ma non si aggiornerà da sola.", error);
+        console.error("Errore Echo:", error);
     }
 
-    // --- INIZIALIZZAZIONE MAPPA ---
     const map = L.map('map').setView([centerLat, centerLng], zoomLevel);
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap contributors'
     }).addTo(map);
 
-    /**
-     * NUOVA LOGICA COLORE (Rispetta la tua colonna 'libera' e 'stato_hardware')
-     */
-    function getMarkerColor(punto) {
-        if (!punto) return '#9ca3af';
+    // Funzione per capire se la stazione ha almeno un punto libero
+    function getStazioneColor(stazione) {
+        if (!stazione.punti_ricarica || stazione.punti_ricarica.length === 0) return '#9ca3af';
         
-        // Se l'hardware non è online, è grigio (Offline)
-        if (punto.stato_hardware !== 'online') return '#9ca3af';
-
-        // Se è online, guardiamo la colonna libera (1 = verde, 0 = rosso)
-        return (punto.libera == 1) ? '#22c55e' : '#ef4444';
+        // Se c'è almeno un punto con libera == 1, la stazione è verde
+        const haPuntiLiberi = stazione.punti_ricarica.some(p => p.libera == 1 && p.stato_hardware === 'online');
+        return haPuntiLiberi ? '#22c55e' : '#ef4444';
     }
 
-    /**
-     * FUNZIONE CARICAMENTO STAZIONI
-     */
     async function loadStations() {
-        console.log("Richiesta stazioni in corso...");
         try {
             const response = await fetch('/api/stations', {
                 method: 'GET',
@@ -118,58 +79,38 @@
                 }
             });
 
-            if (!response.ok) throw new Error('Errore API');
-
             const jsonResponse = await response.json();
             const stazioni = jsonResponse.data;
 
             stazioni.forEach(stazione => {
-                if (stazione.punti_ricarica && stazione.punti_ricarica.length > 0) {
-                    stazione.punti_ricarica.forEach(punto => {
-                        // Creazione marker usando la logica hardware/libera
-                        const marker = L.circleMarker([stazione.latitudine, stazione.longitudine], {
-                            radius: 10,
-                            fillColor: getMarkerColor(punto),
-                            color: "#fff",
-                            weight: 2,
-                            opacity: 1,
-                            fillOpacity: 0.8
-                        }).addTo(map);
+                // CREIAMO UN SOLO MARKER PER STAZIONE
+                const marker = L.circleMarker([stazione.latitudine, stazione.longitudine], {
+                    radius: 12,
+                    fillColor: getStazioneColor(stazione),
+                    color: "#fff",
+                    weight: 2,
+                    opacity: 1,
+                    fillOpacity: 0.8
+                }).addTo(map);
 
-                        // Salvataggio nell'indice per il real-time (Punto 2.10)
-                        markersMap[punto.id_punto] = marker;
-                        stazioniMarkersMap[stazione.id_stazione] = marker;
+                stazioniMarkersMap[stazione.id_stazione] = marker;
 
-                        // Calcolo testo stato per il popup
-                        let statoTesto = 'Offline';
-                        if(punto.stato_hardware === 'online') {
-                            statoTesto = (punto.libera == 1) ? 'Libero' : 'Occupato';
-                        }
-
-                        const popupContent = `
-                            <div class="p-2 text-center">
-                                <h3 class="font-bold text-gray-800">${stazione.nome}</h3>
-                                <p class="text-xs text-gray-500 mb-1">Codice: ${punto.id_punto}</p>
-                                <p class="text-sm mb-3">Stato: <span class="status-text-${punto.id_punto} font-semibold">${statoTesto}</span></p>
-                                
-                                <button onclick="goToDetail('${stazione.id_stazione}')" 
-                                        class="bg-blue-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-blue-700 transition w-full mb-2">
-                                    VAI AL DETTAGLIO
-                                </button>
-
-                                <button onclick="startSimulatedCharge('${punto.id_punto}')" 
-                                        class="bg-green-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-green-700 transition w-full">
-                                    AVVIA RICARICA SIMULATA
-                                </button>
-                            </div>
-                        `;
-                        marker.bindPopup(popupContent);
-                    });
-                }
+                const popupContent = `
+                    <div class="p-2 text-center">
+                        <h3 class="font-bold text-gray-800">${stazione.nome}</h3>
+                        <p class="text-[10px] text-gray-400 mb-1">ID STAZIONE: ${stazione.id_stazione}</p>
+                        <p class="text-sm mb-3">Prese totali: ${stazione.punti_ricarica.length}</p>
+                        
+                        <button onclick="goToDetail('${stazione.id_stazione}')" 
+                                class="bg-blue-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-blue-700 transition w-full">
+                            VAI AL DETTAGLIO
+                        </button>
+                    </div>
+                `;
+                marker.bindPopup(popupContent);
             });
-            console.log("Stazioni caricate con successo.");
         } catch (error) {
-            console.error('Errore:', error);
+            console.error('Errore caricamento stazioni:', error);
         }
     }
 
@@ -177,12 +118,6 @@
         window.location.href = '/stazione/' + idStazione;
     }
 
-    function startSimulatedCharge(idPunto) {
-        const mockUuid = 'sessione-' + Math.random().toString(36).substr(2, 9);
-        window.location.href = `/session/${mockUuid}`;
-    }
-
-    // Eseguiamo il caricamento
     loadStations();
 </script>
 @endpush

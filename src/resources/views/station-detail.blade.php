@@ -14,6 +14,7 @@
             <p class="text-gray-500">{{ $stazione->indirizzo }}</p>
         </div>
 
+        {{-- Container dello Scanner QR --}}
         <div id="qr-reader-container" class="hidden fixed inset-0 bg-black bg-opacity-90 z-50 flex flex-col items-center justify-center p-4">
             <div class="bg-white rounded-3xl p-6 w-full max-w-md text-center">
                 <h2 class="text-xl font-bold mb-4">Inquadra il QR sulla presa</h2>
@@ -22,8 +23,10 @@
             </div>
         </div>
 
+        {{-- Griglia delle Prese (Punti di Ricarica) --}}
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            @foreach($stazione->puntiRicarica->take(2) as $punto)
+            {{-- RIMOSSO .take(2) PER MOSTRARE TUTTE LE {{ $stazione->puntiRicarica->count() }} PRESE --}}
+            @foreach($stazione->puntiRicarica as $punto)
                 <div class="border-2 rounded-[2rem] p-6 flex justify-between items-center transition-all 
                     {{ $punto->stato_hardware === 'online' ? 'border-green-100 bg-green-50' : 'bg-gray-100 opacity-60 border-transparent' }}">
                     
@@ -35,6 +38,7 @@
                             </p>
                         </div>
                         <p class="text-sm text-gray-500 font-medium">Potenza: {{ $punto->potenza_max_kw }} kW</p>
+                        <p class="text-[10px] text-gray-400 font-mono">{{ $punto->id_punto }}</p>
                     </div>
 
                     @if($punto->stato_hardware === 'online')
@@ -69,7 +73,6 @@
                 const idStazionePagina = "{{ $stazione->id_stazione }}";
 
                 if(parts[0] === 'gs' && parts[1] === idStazionePagina) {
-                    // QUI PASSIAMO 3 ARGOMENTI: id_punto, firma, id_stazione
                     inviaDati(puntoCorrente, parts[2], idStazionePagina); 
                     chiudiScanner();
                 } else {
@@ -95,7 +98,6 @@
         }
     }
 
-    // MODIFICATA: Ora accetta anche idStazione
     async function inviaDati(idPunto, firma, idStazione) {
         try {
             const response = await fetch('/api/scan-qr', {
@@ -117,7 +119,6 @@
             if (response.ok) {
                 window.location.href = '/session/' + data.session_uuid;
             } else {
-                // MODIFICA QUI: mostriamo l'errore reale che arriva dal Controller
                 console.error("Dettaglio Errore:", data);
                 alert("ERRORE SERVER: " + (data.message || data.error || JSON.stringify(data)));
             }
