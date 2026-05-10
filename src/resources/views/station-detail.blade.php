@@ -65,6 +65,7 @@
         
         html5QrCode = new Html5Qrcode("reader");
         
+        // TODO EVENTO WEBSOCKET
         html5QrCode.start(
             { facingMode: "environment" }, 
             { fps: 10, qrbox: { width: 250, height: 250 } },

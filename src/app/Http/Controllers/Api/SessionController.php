@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Cache;
 use App\Services\QrService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\Log;
 
 
 /**
@@ -51,13 +52,23 @@ class SessionController extends Controller
             'firma'       => ['required', 'string', 'size:64'],
         ]);
 
-        $userId = $request->user()->id;
+        $userId = $request->user()->id_utente;
 
         // Chiave univoca del nonce in cache, legata all'utente e alla stazione specifica
         $cacheKey = "scan_nonce:{$userId}:{$data['id_stazione']}";
 
         // Cache::pull rimuove e restituisce il valore: se null il nonce è scaduto o mai emesso
+        // Chiave univoca del nonce in cache, legata all'utente e alla stazione specifica
+        $cacheKey = "scan_nonce:{$userId}:{$data['id_stazione']}";
+
         $nonceSalvato = Cache::pull($cacheKey);
+
+        Log::info('[NONCE CERCATO]', [
+            'userId'     => $userId,
+            'idStazione' => $data['id_stazione'],
+            'cacheKey'   => $cacheKey,
+        ]);
+
         if ($nonceSalvato === null) {
             return response()->json(['error' => 'Nonce_invalido'], 422);
         }

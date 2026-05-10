@@ -41,14 +41,14 @@ Route::get('/stazione/{id}', function ($id) {
     // Salviamo il nonce in cache per 5 minuti
     Cache::put($cacheKey, $nonce, now()->addMinutes(5));
 
-    /*
+    
     Log::info('[NONCE SCRITTO]', [
         'userId'     => $userId,
         'idStazione' => $id,
         'cacheKey'   => $cacheKey,
         'nonce'      => $nonce,
     ]);
-    */
+    
     // -------------------------------------------------
 
     return view('station-detail', [
