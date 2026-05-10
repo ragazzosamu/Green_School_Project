@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\WebAuthController;
 use App\Models\Stazioni; // <--- Importante per caricare i dati nella rotta
 use Illuminate\Support\Facades\Cache; // <--- Importante per la gestione del nonce
+use Illuminate\Support\Facades\Log;
 
 // Se l'utente va all'indirizzo base (/), lo mandiamo automaticamente al login
 Route::get('/', function () {
@@ -34,11 +35,20 @@ Route::get('/stazione/{id}', function ($id) {
     // --- MODIFICA: GENERAZIONE NONCE PER LO SCANNER ---
     // Generiamo un codice casuale e lo salviamo in cache collegato all'utente e alla stazione
     $nonce = bin2hex(random_bytes(16));
-    $userId = auth()->user()->id;
+    $userId = auth()->user()->id_utente;
     $cacheKey = "scan_nonce:{$userId}:{$id}";
     
     // Salviamo il nonce in cache per 5 minuti
     Cache::put($cacheKey, $nonce, now()->addMinutes(5));
+
+    /*
+    Log::info('[NONCE SCRITTO]', [
+        'userId'     => $userId,
+        'idStazione' => $id,
+        'cacheKey'   => $cacheKey,
+        'nonce'      => $nonce,
+    ]);
+    */
     // -------------------------------------------------
 
     return view('station-detail', [
