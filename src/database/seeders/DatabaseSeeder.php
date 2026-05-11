@@ -39,6 +39,7 @@ class DatabaseSeeder extends Seeder
             'longitudine' => $lon,
             'coordinata' => DB::raw("ST_GeomFromText('POINT($lon $lat)')"),
             'tipo_area' => 'pubblico',
+            'token'     => 'ad08bf1f9a0900dfefe3e3d52913b600025ccdd7122dbb7f3a524a5a9c9125f3'
         ]);
 
         \App\Models\Utenti::factory(10)->create();
