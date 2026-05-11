@@ -39,7 +39,7 @@ Route::get('/stazione/{id}', function ($id) {
     $cacheKey = "scan_nonce:{$userId}:{$id}";
     
     // Salviamo il nonce in cache per 5 minuti
-    Cache::put($cacheKey, $nonce, now()->addMinutes(5));
+    Cache::put($cacheKey, $nonce, now()->addMinutes(5));//tutta sta roba devo cancellarla e chiamare l'api che ho sulla funziona show di api. 
 
     
     Log::info('[NONCE SCRITTO]', [

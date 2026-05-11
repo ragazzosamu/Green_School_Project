@@ -58,6 +58,10 @@
 <script>
     let html5QrCode;
     let puntoCorrente = null;
+    //ascoltare su punto.idpunto 
+    //su mappa ascolto il punto.status per vedere se la stazione è libera
+
+    //se
 
     function apriScanner(idPunto) {
         puntoCorrente = idPunto;

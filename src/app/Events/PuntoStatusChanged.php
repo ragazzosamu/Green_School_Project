@@ -26,7 +26,7 @@ class PuntoStatusChanged
 
     public function broadcastAs(): string
     {
-        return 'punto.status';
+        return 'punto.status.{$this->idPunto}';
     
     }
 

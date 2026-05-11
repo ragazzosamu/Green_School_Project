@@ -49,9 +49,13 @@
                     fillColor: e.disponibile ? '#22c55e' : '#ef4444'
                 });
             }
+
         });
+
+        // .
     } catch (error) {
         console.error("Errore Echo:", error);
+
     }
 
     const map = L.map('map').setView([centerLat, centerLng], zoomLevel);

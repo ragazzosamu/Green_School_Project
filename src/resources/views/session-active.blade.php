@@ -26,9 +26,9 @@
             </div>
         </div>
 
-        <button onclick="window.location.href='/map'" class="w-full bg-red-500 text-white font-bold py-4 rounded-2xl shadow-lg hover:bg-red-600 transition">
-            TERMINA RICARICA
-        </button>
+        <<button onclick="terminaRicarica()" id="btn-termina" class="w-full bg-red-500 text-white font-bold py-4 rounded-2xl shadow-lg hover:bg-red-600 transition">
+    TERMINA RICARICA
+</button>
     </div>
 </div>
 
