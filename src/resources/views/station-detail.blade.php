@@ -63,12 +63,33 @@
 
     //se
 
-    function apriScanner(idPunto) {
+    async function apriScanner(idPunto) {
         puntoCorrente = idPunto;
+
+        // Chiediamo all'API di generare il nonce anti-replay lato server
+        // prima di permettere lo scan del QR.
+        try {
+            const resp = await fetch('/api/station/{{ $stazione->id_stazione }}', {
+                method: 'GET',
+                headers: {
+                    'Authorization': 'Bearer {{ session("api_token") }}',
+                    'Accept': 'application/json'
+                }
+            });
+            if (!resp.ok) {
+                alert("Impossibile preparare la sessione di scan. Riprova.");
+                return;
+            }
+        } catch (e) {
+            console.error("Errore preparazione nonce:", e);
+            alert("Errore di rete: impossibile preparare lo scan.");
+            return;
+        }
+
         document.getElementById('qr-reader-container').classList.remove('hidden');
-        
+
         html5QrCode = new Html5Qrcode("reader");
-        
+
         // TODO EVENTO WEBSOCKET
         html5QrCode.start(
             { facingMode: "environment" }, 

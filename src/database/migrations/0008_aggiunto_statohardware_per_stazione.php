@@ -14,7 +14,7 @@ return new class extends Migration
                 'offline', 
                 'guasto',
                 'manutenzione_programmata'
-            ])->default('offline')->after('libera');
+            ])->default('online')->after('libera');
             $table->timestamp('data_ultimo_heartbeat')->nullable()->after('stato_hardware');
         });
     }

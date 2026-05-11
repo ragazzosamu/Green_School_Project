@@ -135,13 +135,13 @@ class SessionController extends Controller
         $sessione = Sessioni_ricarica::findOrFail($id_sessione);
 
         // Differenza in minuti tra adesso e l'orario di avvio della sessione
-        $tempoTrascorso = now()->diffInMinutes($sessione->ora_inizio);
+        $tempoTrascorso = now()->diffInMinutes($sessione->data_inizio);
 
         // TODO: recuperare la tariffa attiva e calcolare il costo parziale
-        # $costoParziale = round($sessione->kwh_erogati * $tariffaAttiva->prezzo_per_kwh, 2);
+        # $costoParziale = round($sessione->quantita_kwh * $tariffaAttiva->prezzo_per_kwh, 2);
 
         return response()->json([
-            'kwh_erogati'     => $sessione->kwh_erogati,
+            'kwh_erogati'     => $sessione->quantita_kwh,
             'tempo_trascorso' => $tempoTrascorso,
             # 'costo_parziale' => $costoParziale,
         ]);
@@ -160,8 +160,10 @@ class SessionController extends Controller
      * @return JsonResponse          200 con i dati della sessione conclusa,
      * oppure 409 in caso di errore.
      */
-    public function InterrompiSessione(string $id_sessione,Request $request): JsonResponse
+    public function InterrompiSessione(string $id, Request $request): JsonResponse
     {
+        $id_sessione = $id;
+
         $data = $request->validate([
             'id_stazione' => ['required', 'string'],
             'id_punto'    => ['required', 'string'],

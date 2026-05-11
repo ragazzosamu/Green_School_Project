@@ -65,6 +65,21 @@ services:
       - app
       - redis
 
+  python:
+    build: ./simulatore
+    container_name: green_simulatore
+    volumes: 
+      - ./simulatore:/simulatore
+    environment:
+      - PYTHONUNBUFFERED=1        # Fondamentale per vedere i print nei log
+    networks:
+      - green-network
+    depends_on:
+      - redis
+      - reverb
+      - mariadb
+      - app
+
 networks:
   # Rete bridge condivisa tra tutti i container per farli comunicare tra loro
   green-network:

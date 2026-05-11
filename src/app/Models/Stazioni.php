@@ -87,7 +87,7 @@ class Stazioni extends Model
                 id_stazione,
                 COUNT(*) as totali,
                 SUM(CASE WHEN libera = 0 THEN 1 ELSE 0 END) as occupati,
-                SUM(CASE WHEN libera = 1 AND stato_hardware = 'operativo' THEN 1 ELSE 0 END) as liberi
+                SUM(CASE WHEN libera = 1 AND stato_hardware = 'online' THEN 1 ELSE 0 END) as liberi
             ")
             ->first();
     }

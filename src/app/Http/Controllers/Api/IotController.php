@@ -55,7 +55,7 @@ class IotController extends Controller
     $data = $request->validate([
         'punti'                  => ['required', 'array'],
         'punti.*.id_punto'       => ['required', 'string'],
-        'punti.*.stato_hardware' => ['required', 'string', 'in:idle,online,offline,guasto,manutenzione_programmata'],
+        'punti.*.stato_hardware' => ['required', 'string', 'in:online,offline,guasto,manutenzione_programmata'],
     ]);
 
     foreach ($data['punti'] as $punto) {
@@ -85,7 +85,7 @@ class IotController extends Controller
         $data = $request->validate([
             'punti'                  => ['required', 'array'],
             'punti.*.id_punto'       => ['required', 'string', 'exists:punti_ricarica,id_punto'],
-            'punti.*.stato_hardware' => ['required', 'string', 'in:idle,online,offline,guasto,manutenzione_programmata'],
+            'punti.*.stato_hardware' => ['required', 'string', 'in:online,offline,guasto,manutenzione_programmata'],
         ]);
 
         foreach ($data['punti'] as $punto) {

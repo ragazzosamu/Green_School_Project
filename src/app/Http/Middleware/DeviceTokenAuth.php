@@ -26,7 +26,7 @@ class DeviceTokenAuth
 
         $stazione = DB::table('stazioni')
         ->select('id_stazione', 'token')
-        ->where('device_token', $token)
+        ->where('token', $token)
         ->first();
         
         if(!$stazione)

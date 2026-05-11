@@ -33,7 +33,7 @@ class DatabaseSeeder extends Seeder
         Stazioni::create([
 
             'id_stazione' => 'c1d1d1c3-2806-3007-8f48-33f2b28c4839',
-            'nome' => 'Stazione Barsanti',
+            'nome' => 'Stazione TEST',
             'indirizzo' => fake()->streetName() . ', Castelfranco Veneto',
             'latitudine' => $lat,
             'longitudine' => $lon,
@@ -52,6 +52,11 @@ class DatabaseSeeder extends Seeder
         \App\Models\Sessioni_ricarica::factory(30)->create();
         \App\Models\StoricoLivelloBatteria::factory(100)->create();
 
-
+        // --- Seeder Green School (gamification + scuola) ---
+        $this->call([
+            Gamification_badge_catalogoSeeder::class,
+            Gamification_profilo_utenteSeeder::class,
+            ScuolaSeeder::class,
+        ]);
     }
 }

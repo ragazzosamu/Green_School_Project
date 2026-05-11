@@ -51,3 +51,7 @@ docker-compose.override.yml
 .docker-data/
 docker-data/
 docker-data
+
+# Claude Code workspace (worktrees, settings locali, ecc.)
+.claude/
+src/.claude/

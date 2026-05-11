@@ -3,8 +3,6 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\WebAuthController;
 use App\Models\Stazioni; // <--- Importante per caricare i dati nella rotta
-use Illuminate\Support\Facades\Cache; // <--- Importante per la gestione del nonce
-use Illuminate\Support\Facades\Log;
 
 // Se l'utente va all'indirizzo base (/), lo mandiamo automaticamente al login
 Route::get('/', function () {
@@ -29,27 +27,10 @@ Route::get('/map', function () {
 // --- NUOVA ROTTA: DETTAGLIO COLONNINA (PUNTI DI RICARICA) ---
 // Questa è la rotta che serve per aprire la pagina delle prese quando clicchi sul pallino
 Route::get('/stazione/{id}', function ($id) {
-    // Carichiamo la stazione con tutte le sue prese (puntiRicarica)
+    // Carichiamo la stazione con tutte le sue prese (puntiRicarica) per il rendering.
+    // Il nonce per l'anti-replay non viene piu' generato qui: lo crea l'API
+    // GET /api/station/{id}, che il frontend chiama prima di aprire lo scanner.
     $stazione = Stazioni::with('puntiRicarica')->findOrFail($id);
-    
-    // --- MODIFICA: GENERAZIONE NONCE PER LO SCANNER ---
-    // Generiamo un codice casuale e lo salviamo in cache collegato all'utente e alla stazione
-    $nonce = bin2hex(random_bytes(16));
-    $userId = auth()->user()->id_utente;
-    $cacheKey = "scan_nonce:{$userId}:{$id}";
-    
-    // Salviamo il nonce in cache per 5 minuti
-    Cache::put($cacheKey, $nonce, now()->addMinutes(5));//tutta sta roba devo cancellarla e chiamare l'api che ho sulla funziona show di api. 
-
-    
-    Log::info('[NONCE SCRITTO]', [
-        'userId'     => $userId,
-        'idStazione' => $id,
-        'cacheKey'   => $cacheKey,
-        'nonce'      => $nonce,
-    ]);
-    
-    // -------------------------------------------------
 
     return view('station-detail', [
         'stazione' => $stazione
