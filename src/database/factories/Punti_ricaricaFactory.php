@@ -19,7 +19,8 @@ class Punti_ricaricaFactory extends Factory
     public function definition(): array {
     return [
         'id_punto' => fake()->unique()->uuid(),
-        'id_stazione' => \App\Models\Stazioni::inRandomOrder()->first()?->id_stazione ?? \App\Models\Stazioni::factory(),
+        'id_stazione' => \App\Models\Stazioni::where('id_stazione', '!=', 'c1d1d1c3-2806-3007-8f48-33f2b28c4839')
+        ->inRandomOrder()->first()?->id_stazione ?? \App\Models\Stazioni::factory(),
         'identificativo_fisico' => 'Presa ' . fake()->bothify('#-??'),
         'tipo_veicolo' => fake()->randomElement(['bici', 'monopattino']),
         'tipo_connettore' => 'Schuko',
