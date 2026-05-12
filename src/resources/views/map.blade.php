@@ -1,20 +1,222 @@
 @extends('layouts.app')
 
 @section('content')
-<div class="container mx-auto px-4">
-    <div class="flex justify-between items-center mb-6">
-        <h1 class="text-2xl font-bold text-gray-800">Mappa Stazioni di Ricarica</h1>
-        <div class="flex space-x-4 text-sm">
-            <span class="flex items-center"><span class="w-3 h-3 bg-green-500 rounded-full mr-2"></span> Libera</span>
-            <span class="flex items-center"><span class="w-3 h-3 bg-red-500 rounded-full mr-2"></span> Occupata</span>
-            <span class="flex items-center"><span class="w-3 h-3 bg-gray-400 rounded-full mr-2"></span> Offline</span>
-        </div>
-    </div>
 
-    <div id="map" class="w-full h-[600px] rounded-2xl shadow-lg border border-gray-200"></div>
-</div>
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600&display=swap');
+
+    /* ── PAGE HEADER ── */
+    .page-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        margin-bottom: 1.5rem;
+        gap: 1rem;
+        flex-wrap: wrap;
+    }
+
+    .page-eyebrow {
+        font-size: 0.7rem;
+        font-weight: 600;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--text-3);
+        margin-bottom: 5px;
+    }
+
+    .page-title {
+        font-family: 'DM Serif Display', Georgia, serif;
+        font-size: 1.75rem;
+        color: var(--text);
+        letter-spacing: -0.03em;
+        line-height: 1;
+    }
+
+    /* ── LEGEND ── */
+    .legend {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 100px;
+        padding: 8px 18px;
+        box-shadow: var(--shadow-sm);
+    }
+
+    .legend-item {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        font-size: 0.76rem;
+        color: var(--text-2);
+        font-weight: 500;
+    }
+
+    .legend-dot {
+        width: 8px; height: 8px;
+        border-radius: 50%;
+        flex-shrink: 0;
+    }
+
+    .legend-dot.green { background: #16A34A; }
+    .legend-dot.red   { background: #DC2626; }
+    .legend-dot.gray  { background: #9CA3AF; }
+
+    .legend-sep {
+        width: 1px; height: 14px;
+        background: var(--border);
+    }
+
+    /* ── MAP WRAPPER ── */
+    .map-wrap {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 18px;
+        overflow: hidden;
+        box-shadow: var(--shadow-md);
+    }
+
+    #map {
+        width: 100%;
+        height: 620px;
+    }
+
+    /* ── LEAFLET POPUP OVERRIDE ── */
+    .leaflet-popup-content-wrapper {
+        background: #FFFFFF !important;
+        border: 1px solid #E4E2DA !important;
+        border-radius: 16px !important;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06) !important;
+        padding: 0 !important;
+        overflow: hidden;
+    }
+
+    .leaflet-popup-content {
+        margin: 0 !important;
+        width: auto !important;
+    }
+
+    .leaflet-popup-tip {
+        background: #FFFFFF !important;
+        box-shadow: none !important;
+    }
+
+    .leaflet-popup-close-button {
+        color: #A8A69E !important;
+        font-size: 16px !important;
+        top: 12px !important;
+        right: 14px !important;
+        width: 20px !important;
+        height: 20px !important;
+        line-height: 20px !important;
+    }
+
+    .leaflet-popup-close-button:hover { color: #1A1916 !important; }
+
+    /* ── POPUP CONTENT ── */
+    .gs-popup {
+        min-width: 240px;
+        font-family: 'DM Sans', sans-serif;
+    }
+
+    .gs-popup-top {
+        padding: 16px 18px 14px;
+        border-bottom: 1px solid #F2F1ED;
+    }
+
+    .gs-popup-eyebrow {
+        font-size: 0.63rem;
+        font-weight: 600;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: #A8A69E;
+        margin-bottom: 5px;
+    }
+
+    .gs-popup-name {
+        font-family: 'DM Serif Display', Georgia, serif;
+        font-size: 1.1rem;
+        color: #1A1916;
+        letter-spacing: -0.01em;
+        font-weight: 400;
+        line-height: 1.2;
+    }
+
+    .gs-popup-id {
+        font-size: 0.65rem;
+        color: #C8C6BE;
+        font-family: 'DM Mono', 'Courier New', monospace;
+        margin-top: 4px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .gs-popup-bottom {
+        padding: 12px 18px 16px;
+    }
+
+    .gs-popup-meta {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 12px;
+    }
+
+    .gs-popup-prese {
+        font-size: 0.8rem;
+        color: #6B6860;
+        font-weight: 400;
+    }
+
+    .gs-popup-prese strong {
+        color: #1A1916;
+        font-weight: 600;
+    }
+
+    .gs-popup-btn {
+        display: block;
+        width: 100%;
+        background: #2A6B4A;
+        color: #fff;
+        border: none;
+        border-radius: 10px;
+        padding: 11px;
+        font-family: 'DM Sans', sans-serif;
+        font-size: 0.78rem;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        cursor: pointer;
+        text-align: center;
+        transition: background 0.15s, box-shadow 0.15s;
+    }
+
+    .gs-popup-btn:hover {
+        background: #1f5238;
+        box-shadow: 0 3px 12px rgba(42,107,74,0.3);
+    }
+</style>
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+<div class="page-header">
+    <div>
+        <p class="page-eyebrow">Infrastruttura</p>
+        <h1 class="page-title">Stazioni di Ricarica</h1>
+    </div>
+    <div class="legend">
+        <span class="legend-item"><span class="legend-dot green"></span>Libera</span>
+        <span class="legend-sep"></span>
+        <span class="legend-item"><span class="legend-dot red"></span>Occupata</span>
+        <span class="legend-sep"></span>
+        <span class="legend-item"><span class="legend-dot gray"></span>Offline</span>
+    </div>
+</div>
+
+<div class="map-wrap">
+    <div id="map"></div>
+</div>
 
 @push('scripts')
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -22,7 +224,7 @@
 <script src="https://cdn.jsdelivr.net/npm/laravel-echo@1.15.3/dist/echo.iife.js"></script>
 
 <script>
-    const stazioniMarkersMap = {}; 
+    const stazioniMarkersMap = {};
 
     const apiToken = "{{ $api_token }}";
     const centerLat = {{ $center_lat ?? 45.4642 }};
@@ -46,16 +248,13 @@
             const stazioneMarker = stazioniMarkersMap[e.id_stazione];
             if (stazioneMarker) {
                 stazioneMarker.setStyle({
-                    fillColor: e.disponibile ? '#22c55e' : '#ef4444'
+                    fillColor: e.disponibile ? '#16A34A' : '#DC2626'
                 });
             }
-
         });
 
-        // .
     } catch (error) {
         console.error("Errore Echo:", error);
-
     }
 
     const map = L.map('map').setView([centerLat, centerLng], zoomLevel);
@@ -64,13 +263,12 @@
         attribution: '© OpenStreetMap contributors'
     }).addTo(map);
 
-    // Funzione per capire se la stazione ha almeno un punto libero
     function getStazioneColor(stazione) {
-        if (!stazione.punti_ricarica || stazione.punti_ricarica.length === 0) return '#9ca3af';
-        
-        // Se c'è almeno un punto con libera == 1, la stazione è verde
+        if (!stazione.punti_ricarica || stazione.punti_ricarica.length === 0) return '#9CA3AF';
+        const tuttiOffline = stazione.punti_ricarica.every(p => p.stato_hardware !== 'online');
+        if (tuttiOffline) return '#9CA3AF';
         const haPuntiLiberi = stazione.punti_ricarica.some(p => p.libera == 1 && p.stato_hardware === 'online');
-        return haPuntiLiberi ? '#22c55e' : '#ef4444';
+        return haPuntiLiberi ? '#16A34A' : '#DC2626';
     }
 
     async function loadStations() {
@@ -87,31 +285,36 @@
             const stazioni = jsonResponse.data;
 
             stazioni.forEach(stazione => {
-                // CREIAMO UN SOLO MARKER PER STAZIONE
+                const color = getStazioneColor(stazione);
                 const marker = L.circleMarker([stazione.latitudine, stazione.longitudine], {
-                    radius: 12,
-                    fillColor: getStazioneColor(stazione),
-                    color: "#fff",
-                    weight: 2,
+                    radius: 11,
+                    fillColor: color,
+                    color: '#FFFFFF',
+                    weight: 2.5,
                     opacity: 1,
-                    fillOpacity: 0.8
+                    fillOpacity: 0.9
                 }).addTo(map);
 
                 stazioniMarkersMap[stazione.id_stazione] = marker;
 
                 const popupContent = `
-                    <div class="p-2 text-center">
-                        <h3 class="font-bold text-gray-800">${stazione.nome}</h3>
-                        <p class="text-[10px] text-gray-400 mb-1">ID STAZIONE: ${stazione.id_stazione}</p>
-                        <p class="text-sm mb-3">Prese totali: ${stazione.punti_ricarica.length}</p>
-                        
-                        <button onclick="goToDetail('${stazione.id_stazione}')" 
-                                class="bg-blue-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-blue-700 transition w-full">
-                            VAI AL DETTAGLIO
-                        </button>
+                    <div class="gs-popup">
+                        <div class="gs-popup-top">
+                            <p class="gs-popup-eyebrow">Stazione di ricarica</p>
+                            <p class="gs-popup-name">${stazione.nome}</p>
+                            <p class="gs-popup-id">${stazione.id_stazione}</p>
+                        </div>
+                        <div class="gs-popup-bottom">
+                            <div class="gs-popup-meta">
+                                <span class="gs-popup-prese">Prese totali: <strong>${stazione.punti_ricarica.length}</strong></span>
+                            </div>
+                            <button onclick="goToDetail('${stazione.id_stazione}')" class="gs-popup-btn">
+                                Vai al dettaglio →
+                            </button>
+                        </div>
                     </div>
                 `;
-                marker.bindPopup(popupContent);
+                marker.bindPopup(popupContent, { maxWidth: 380, minWidth: 360 });
             });
         } catch (error) {
             console.error('Errore caricamento stazioni:', error);
