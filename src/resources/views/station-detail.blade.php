@@ -3,8 +3,6 @@
 @section('content')
 
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600&display=swap');
-
     :root {
         --bg:        #F7F6F2;
         --surface:   #FFFFFF;
@@ -15,6 +13,7 @@
         --text-3:    #A8A69E;
         --accent:    #2A6B4A;
         --accent-bg: #EBF5EF;
+        --accent-mid:#4A9B6F;
         --red:       #DC2626;
         --red-bg:    #FEF2F2;
         --red-border:#FECACA;
@@ -31,7 +30,7 @@
         font-weight: 500;
         color: var(--text-3);
         text-decoration: none;
-        margin-bottom: 1.75rem;
+        margin-bottom: 1.5rem;
         transition: color 0.15s;
     }
     .back-link:hover { color: var(--text-2); }
@@ -45,151 +44,266 @@
         box-shadow: var(--shadow-md);
     }
 
-    /* ── HEADER STRIP ── */
+    /* ── HEADER — stack verticale su mobile ── */
     .station-header {
-        padding: 2rem 2.5rem;
+        padding: 1.75rem 2rem;
         border-bottom: 1px solid var(--border);
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 1.5rem;
-        flex-wrap: wrap;
         background: var(--surface);
     }
 
-    .station-meta { flex: 1; min-width: 0; }
+    /* Nome + indirizzo */
+    .station-meta { margin-bottom: 1.25rem; }
 
     .station-eyebrow {
         font-size: 0.7rem;
         font-weight: 600;
-        letter-spacing: 0.12em;
+        letter-spacing: 0.1em;
         text-transform: uppercase;
         color: var(--text-3);
-        margin-bottom: 6px;
+        margin-bottom: 5px;
     }
 
     .station-name {
-        font-family: 'DM Serif Display', Georgia, serif;
-        font-size: 1.9rem;
+        font-family: 'Instrument Serif', Georgia, serif;
+        font-size: clamp(1.4rem, 4vw, 1.9rem);
         color: var(--text);
         letter-spacing: -0.03em;
-        line-height: 1.1;
+        line-height: 1.15;
         margin-bottom: 4px;
+        /* Niente truncate — va a capo */
+        word-break: break-word;
     }
 
     .station-address {
-        font-size: 0.85rem;
+        font-size: 0.82rem;
         color: var(--text-3);
-        font-weight: 300;
     }
 
-    /* Stats chips */
+    /* Chips statistiche — sempre in riga orizzontale */
     .station-chips {
         display: flex;
-        gap: 10px;
-        flex-wrap: wrap;
-        flex-shrink: 0;
+        gap: 8px;
+        flex-wrap: nowrap;   /* NON vanno a capo, restano su una riga */
     }
 
     .stat-chip {
+        flex: 1;             /* occupano lo spazio disponibile in ugual misura */
         background: var(--surface2);
         border: 1px solid var(--border);
         border-radius: 10px;
-        padding: 10px 16px;
+        padding: 10px 12px;
         text-align: center;
-        min-width: 72px;
+        min-width: 0;        /* evita overflow */
     }
 
     .stat-chip-val {
-        font-family: 'DM Serif Display', Georgia, serif;
-        font-size: 1.6rem;
+        font-family: 'Instrument Serif', Georgia, serif;
+        font-size: 1.5rem;
         color: var(--text);
         line-height: 1;
-        font-weight: 400;
     }
 
     .stat-chip-val.green { color: #16A34A; }
     .stat-chip-val.red   { color: var(--red); }
 
     .stat-chip-label {
-        font-size: 0.63rem;
+        font-size: 0.62rem;
         color: var(--text-3);
         font-weight: 600;
-        letter-spacing: 0.08em;
+        letter-spacing: 0.07em;
         text-transform: uppercase;
+        margin-top: 2px;
+        white-space: nowrap;
+    }
+
+    /* ── QR SCANNER OVERLAY ── */
+    #qr-reader-container {
+        position: fixed;
+        inset: 0;
+        background: rgba(26,25,22,0.6);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        z-index: 9999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 1.25rem;
+        animation: overlayIn 0.2s ease both;
+    }
+
+    #qr-reader-container.hidden { display: none; }
+
+    @keyframes overlayIn {
+        from { opacity:0; }
+        to   { opacity:1; }
+    }
+
+    .qr-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        padding: 1.75rem;
+        width: 100%;
+        max-width: 390px;
+        box-shadow: 0 24px 64px rgba(0,0,0,0.22), 0 4px 16px rgba(0,0,0,0.1);
+        animation: qrCardIn 0.3s cubic-bezier(0.16,1,0.3,1) both;
+    }
+
+    @keyframes qrCardIn {
+        from { opacity:0; transform: scale(0.95) translateY(10px); }
+        to   { opacity:1; transform: scale(1) translateY(0); }
+    }
+
+    .qr-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 1.25rem;
+        padding-bottom: 1.25rem;
+        border-bottom: 1px solid var(--border);
+    }
+
+    .qr-icon-box {
+        width: 40px; height: 40px;
+        background: var(--accent-bg);
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 18px;
+        flex-shrink: 0;
+    }
+
+    .qr-title {
+        font-family: 'Geist', sans-serif;
+        font-weight: 600;
+        font-size: 0.92rem;
+        color: var(--text);
+        line-height: 1.2;
+    }
+
+    .qr-subtitle {
+        font-size: 0.76rem;
+        color: var(--text-3);
         margin-top: 2px;
     }
 
-    /* ── PRESE GRID ── */
-    .prese-section {
-        padding: 2rem 2.5rem;
+    .qr-camera-wrap {
+        border-radius: 12px;
+        overflow: hidden;
+        background: #F2F1ED;
+        border: 1px solid var(--border);
+        position: relative;
+        margin-bottom: 1rem;
     }
+
+    #reader { width: 100% !important; min-height: 220px; }
+
+    /* Angoli scanner */
+    .scan-corner {
+        position: absolute;
+        width: 32px; height: 32px;
+        border-color: var(--accent);
+        border-style: solid;
+        border-width: 0;
+        z-index: 5;
+        pointer-events: none;
+    }
+    .sc-tl { top:12px; left:12px; border-top-width:3px; border-left-width:3px; border-radius:3px 0 0 0; }
+    .sc-tr { top:12px; right:12px; border-top-width:3px; border-right-width:3px; border-radius:0 3px 0 0; }
+    .sc-bl { bottom:12px; left:12px; border-bottom-width:3px; border-left-width:3px; border-radius:0 0 0 3px; }
+    .sc-br { bottom:12px; right:12px; border-bottom-width:3px; border-right-width:3px; border-radius:0 0 3px 0; }
+
+    .scan-line {
+        position: absolute;
+        left: 14px; right: 14px;
+        height: 2px;
+        background: linear-gradient(90deg, transparent, var(--accent), transparent);
+        border-radius: 1px;
+        animation: scanAnim 2s ease-in-out infinite;
+        z-index: 6;
+        pointer-events: none;
+    }
+
+    @keyframes scanAnim {
+        0%   { top:15%; opacity:0; }
+        8%   { opacity:1; }
+        92%  { opacity:1; }
+        100% { top:85%; opacity:0; }
+    }
+
+    .qr-cancel-btn {
+        width: 100%;
+        padding: 12px;
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        font-family: 'Geist', sans-serif;
+        font-size: 0.82rem;
+        font-weight: 500;
+        color: var(--text-2);
+        cursor: pointer;
+        transition: all 0.15s;
+    }
+    .qr-cancel-btn:hover { background: #E8E6E0; color: var(--text); }
+
+    /* ── PRESE ── */
+    .prese-section { padding: 1.75rem 2rem; }
 
     .prese-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-        gap: 1rem;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 0.9rem;
     }
 
-    /* ── SINGLE PRESA ── */
+    @media (max-width: 600px) {
+        .prese-section { padding: 1.25rem 1rem; }
+        .station-header { padding: 1.25rem 1rem; }
+        .prese-grid { grid-template-columns: 1fr; }
+    }
+
     .presa-card {
         border-radius: 14px;
         border: 1px solid var(--border);
-        padding: 1.25rem 1.5rem;
+        padding: 1.1rem 1.25rem;
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 1rem;
-        transition: box-shadow 0.15s, border-color 0.15s;
+        gap: 0.75rem;
+        transition: box-shadow 0.15s;
         background: var(--surface);
     }
 
     .presa-card:hover { box-shadow: var(--shadow-sm); }
+    .presa-card.stato-libera   { border-color: #BBF7D0; background: #F0FDF4; }
+    .presa-card.stato-occupata { border-color: var(--red-border); background: var(--red-bg); }
+    .presa-card.stato-offline  { background: var(--surface2); opacity: 0.6; }
 
-    .presa-card.stato-libera {
-        border-color: #BBF7D0;
-        background: #F0FDF4;
-    }
+    .status-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; margin-top:2px; }
+    .status-dot.green { background:#16A34A; }
+    .status-dot.red   { background:var(--red); }
+    .status-dot.gray  { background:#D1D5DB; }
 
-    .presa-card.stato-occupata {
-        border-color: var(--red-border);
-        background: var(--red-bg);
-    }
-
-    .presa-card.stato-offline {
-        background: var(--surface2);
-        opacity: 0.65;
-    }
-
-    .status-dot {
-        width: 8px; height: 8px;
-        border-radius: 50%;
-        flex-shrink: 0;
-        margin-top: 2px;
-    }
-    .status-dot.green { background: #16A34A; }
-    .status-dot.red   { background: var(--red); }
-    .status-dot.gray  { background: #D1D5DB; }
-
-    .presa-info { flex: 1; min-width: 0; }
+    .presa-info { flex:1; min-width:0; }
 
     .presa-name-row {
         display: flex;
         align-items: center;
-        gap: 8px;
-        margin-bottom: 4px;
+        gap: 7px;
+        margin-bottom: 3px;
+        flex-wrap: wrap;
     }
 
     .presa-name {
-        font-family: 'DM Sans', sans-serif;
+        font-family: 'Geist', sans-serif;
         font-weight: 600;
-        font-size: 0.95rem;
+        font-size: 0.9rem;
         color: var(--text);
         letter-spacing: 0.02em;
     }
 
     .presa-badge {
-        font-size: 0.62rem;
+        font-size: 0.6rem;
         font-weight: 600;
         letter-spacing: 0.08em;
         text-transform: uppercase;
@@ -198,247 +312,36 @@
         flex-shrink: 0;
     }
 
-    .presa-badge.libera   { color: #15803D; background: #DCFCE7; }
-    .presa-badge.occupata { color: #B91C1C; background: #FEE2E2; }
-    .presa-badge.offline  { color: #9CA3AF; background: #F3F4F6; }
+    .presa-badge.libera   { color:#15803D; background:#DCFCE7; }
+    .presa-badge.occupata { color:#B91C1C; background:#FEE2E2; }
+    .presa-badge.offline  { color:#9CA3AF; background:#F3F4F6; }
 
-    .presa-power {
-        font-size: 0.8rem;
-        color: var(--text-3);
-        margin-bottom: 3px;
-        font-weight: 300;
-    }
+    .presa-power { font-size:0.78rem; color:var(--text-3); margin-bottom:2px; }
+    .presa-id { font-size:0.58rem; color:#D1D0CA; font-family:monospace; word-break:break-all; }
 
-    /* ID ingrandito e leggibile */
-    .presa-id {
-        font-size: 0.72rem;
-        color: #B0AEA8;
-        font-family: 'DM Mono', 'Courier New', monospace;
-        word-break: break-all;
-        line-height: 1.4;
-        letter-spacing: 0.01em;
-    }
-
-    /* Scegli button */
     .scegli-btn {
         background: var(--accent);
         color: #fff;
         border: none;
         border-radius: 10px;
-        padding: 10px 18px;
-        font-family: 'DM Sans', sans-serif;
-        font-size: 0.8rem;
+        padding: 9px 16px;
+        font-family: 'Geist', sans-serif;
+        font-size: 0.78rem;
         font-weight: 600;
         cursor: pointer;
         white-space: nowrap;
+        flex-shrink: 0;
         transition: background 0.15s, box-shadow 0.15s;
         box-shadow: 0 1px 6px rgba(42,107,74,0.2);
-        flex-shrink: 0;
     }
-    .scegli-btn:hover {
-        background: #1f5238;
-        box-shadow: 0 3px 12px rgba(42,107,74,0.3);
-    }
-
-    /* ── QR SCANNER OVERLAY ── */
-    #qr-reader-container {
-        position: fixed;
-        inset: 0;
-        background: rgba(15, 15, 12, 0.75);
-        backdrop-filter: blur(12px);
-        -webkit-backdrop-filter: blur(12px);
-        z-index: 9999;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 1.5rem;
-        animation: overlayIn 0.2s ease both;
-    }
-
-    #qr-reader-container.hidden { display: none; }
-
-    @keyframes overlayIn {
-        from { opacity: 0; }
-        to   { opacity: 1; }
-    }
-
-    .qr-card {
-        background: #1A1916;
-        border: 1px solid rgba(255,255,255,0.08);
-        border-radius: 24px;
-        padding: 1.75rem;
-        width: 100%;
-        max-width: 380px;
-        box-shadow: 0 32px 80px rgba(0,0,0,0.5), 0 4px 20px rgba(0,0,0,0.3);
-        animation: qrCardIn 0.35s cubic-bezier(0.16,1,0.3,1) both;
-    }
-
-    @keyframes qrCardIn {
-        from { opacity: 0; transform: scale(0.94) translateY(12px); }
-        to   { opacity: 1; transform: scale(1) translateY(0); }
-    }
-
-    .qr-header {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        margin-bottom: 1.25rem;
-    }
-
-    .qr-icon-box {
-        width: 38px; height: 38px;
-        background: rgba(42,107,74,0.3);
-        border: 1px solid rgba(42,107,74,0.4);
-        border-radius: 10px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 17px;
-        flex-shrink: 0;
-    }
-
-    .qr-title {
-        font-family: 'DM Sans', sans-serif;
-        font-weight: 600;
-        font-size: 0.92rem;
-        color: rgba(255,255,255,0.9);
-        line-height: 1.2;
-    }
-
-    .qr-subtitle {
-        font-size: 0.75rem;
-        color: rgba(255,255,255,0.35);
-        margin-top: 2px;
-        font-weight: 300;
-    }
-
-    /* Camera area */
-    .qr-camera-wrap {
-        border-radius: 16px;
-        overflow: hidden;
-        background: #0D0D0B;
-        border: 1px solid rgba(255,255,255,0.06);
-        position: relative;
-        margin-bottom: 1rem;
-    }
-
-    #reader {
-        width: 100% !important;
-        min-height: 260px;
-    }
-
-    /* Hide html5-qrcode default UI clutter */
-    #reader__scan_region img { display: none !important; }
-    #reader__dashboard { display: none !important; }
-
-    /* Corner brackets */
-    .scan-frame {
-        position: absolute;
-        inset: 0;
-        pointer-events: none;
-        z-index: 10;
-    }
-
-    .scan-frame::before,
-    .scan-frame::after,
-    .scan-frame .corner-br,
-    .scan-frame .corner-tl-h {
-        content: '';
-        position: absolute;
-        width: 36px; height: 36px;
-        border-color: #4ADE80;
-        border-style: solid;
-        border-width: 0;
-    }
-
-    /* top-left */
-    .scan-frame::before {
-        top: 20px; left: 20px;
-        border-top-width: 2.5px;
-        border-left-width: 2.5px;
-        border-radius: 4px 0 0 0;
-    }
-
-    /* top-right */
-    .scan-frame::after {
-        top: 20px; right: 20px;
-        border-top-width: 2.5px;
-        border-right-width: 2.5px;
-        border-radius: 0 4px 0 0;
-    }
-
-    /* bottom-left */
-    .corner-bl {
-        position: absolute;
-        bottom: 20px; left: 20px;
-        width: 36px; height: 36px;
-        border-bottom: 2.5px solid #4ADE80;
-        border-left: 2.5px solid #4ADE80;
-        border-radius: 0 0 0 4px;
-    }
-
-    /* bottom-right */
-    .corner-br {
-        position: absolute;
-        bottom: 20px; right: 20px;
-        width: 36px; height: 36px;
-        border-bottom: 2.5px solid #4ADE80;
-        border-right: 2.5px solid #4ADE80;
-        border-radius: 0 0 4px 0;
-    }
-
-    /* Scan line */
-    .scan-line {
-        position: absolute;
-        left: 20px; right: 20px;
-        height: 1.5px;
-        background: linear-gradient(90deg, transparent, #4ADE80, transparent);
-        animation: scanAnim 2.2s ease-in-out infinite;
-        z-index: 11;
-        pointer-events: none;
-    }
-
-    @keyframes scanAnim {
-        0%   { top: 18%; opacity: 0; }
-        8%   { opacity: 1; }
-        92%  { opacity: 1; }
-        100% { top: 82%; opacity: 0; }
-    }
-
-    /* scanning hint */
-    .qr-hint {
-        text-align: center;
-        font-size: 0.72rem;
-        color: rgba(255,255,255,0.3);
-        margin-bottom: 1rem;
-        font-weight: 300;
-        letter-spacing: 0.02em;
-    }
-
-    .qr-cancel-btn {
-        width: 100%;
-        padding: 12px;
-        background: rgba(255,255,255,0.05);
-        border: 1px solid rgba(255,255,255,0.08);
-        border-radius: 12px;
-        font-family: 'DM Sans', sans-serif;
-        font-size: 0.82rem;
-        font-weight: 500;
-        color: rgba(255,255,255,0.45);
-        cursor: pointer;
-        transition: all 0.15s;
-    }
-    .qr-cancel-btn:hover {
-        background: rgba(255,255,255,0.08);
-        color: rgba(255,255,255,0.7);
-    }
+    .scegli-btn:hover { background:#1f5238; box-shadow:0 3px 12px rgba(42,107,74,0.3); }
 </style>
 
 <a href="{{ route('map') }}" class="back-link">← Torna alla mappa</a>
 
 <div class="station-card">
 
-    <!-- Header -->
+    <!-- Header: prima il nome, poi i chip sotto -->
     <div class="station-header">
         <div class="station-meta">
             <p class="station-eyebrow">Dettaglio stazione</p>
@@ -474,15 +377,13 @@
             </div>
 
             <div class="qr-camera-wrap">
-                <div class="scan-frame">
-                    <span class="corner-bl"></span>
-                    <span class="corner-br"></span>
-                </div>
+                <div class="scan-corner sc-tl"></div>
+                <div class="scan-corner sc-tr"></div>
+                <div class="scan-corner sc-bl"></div>
+                <div class="scan-corner sc-br"></div>
                 <div class="scan-line"></div>
                 <div id="reader"></div>
             </div>
-
-            <p class="qr-hint">Tieni il telefono fermo sopra il QR</p>
 
             <button onclick="chiudiScanner()" class="qr-cancel-btn">Annulla</button>
         </div>
@@ -497,20 +398,20 @@
                     $isLibera = $punto->libera == 1;
 
                     if (!$isOnline) {
-                        $cardClass   = 'stato-offline';
-                        $dotClass    = 'gray';
-                        $badgeClass  = 'offline';
-                        $badgeLabel  = 'Offline';
+                        $cardClass  = 'stato-offline';
+                        $dotClass   = 'gray';
+                        $badgeClass = 'offline';
+                        $badgeLabel = 'Offline';
                     } elseif ($isLibera) {
-                        $cardClass   = 'stato-libera';
-                        $dotClass    = 'green';
-                        $badgeClass  = 'libera';
-                        $badgeLabel  = 'Disponibile';
+                        $cardClass  = 'stato-libera';
+                        $dotClass   = 'green';
+                        $badgeClass = 'libera';
+                        $badgeLabel = 'Disponibile';
                     } else {
-                        $cardClass   = 'stato-occupata';
-                        $dotClass    = 'red';
-                        $badgeClass  = 'occupata';
-                        $badgeLabel  = 'In uso';
+                        $cardClass  = 'stato-occupata';
+                        $dotClass   = 'red';
+                        $badgeClass = 'occupata';
+                        $badgeLabel = 'In uso';
                     }
                 @endphp
 
@@ -542,22 +443,27 @@
 <script>
     let html5QrCode;
     let puntoCorrente = null;
+    //ascoltare su punto.idpunto 
+    //su mappa ascolto il punto.status per vedere se la stazione è libera
+
+    //se
 
     function apriScanner(idPunto) {
         puntoCorrente = idPunto;
         document.getElementById('qr-reader-container').classList.remove('hidden');
-
+        
         html5QrCode = new Html5Qrcode("reader");
-
+        
+        // TODO EVENTO WEBSOCKET
         html5QrCode.start(
-            { facingMode: "environment" },
-            { fps: 10, qrbox: { width: 220, height: 220 } },
+            { facingMode: "environment" }, 
+            { fps: 10, qrbox: { width: 200, height: 200 } },
             (decodedText) => {
                 const parts = decodedText.split(':');
                 const idStazionePagina = "{{ $stazione->id_stazione }}";
 
                 if(parts[0] === 'gs' && parts[1] === idStazionePagina) {
-                    inviaDati(puntoCorrente, parts[2], idStazionePagina);
+                    inviaDati(puntoCorrente, parts[2], idStazionePagina); 
                     chiudiScanner();
                 } else {
                     alert("Questo QR non corrisponde a questa stazione!");
