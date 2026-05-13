@@ -63,13 +63,19 @@ docker exec -it green_app php artisan migrate:fresh --seed
 
  ### 🌐 Accesso Browser
 * **Sito Web:** [http://localhost](http://localhost)
-* **WebSocket Test:** [http://localhost:8080](http://localhost:8080)
+* **WebSocket Test:** *work in progress*
 
 ## Comandi utili
 ```bash
 # Genera il QR code SVG per una stazione di ricarica (sostituisci 1 con l'ID della stazione)
 # L'output si trova nella cartella storage/app/private/public/qrcodes
 docker exec -it green_app php artisan app:genera 1
+```
+
+```bash
+# Genera tutti i QR
+# L'output si trova nella cartella storage/app/private/public/qrcodes
+docker exec -it green_app php artisan app:genera-tutti
 ```
 
 ## Comandi di gestione
