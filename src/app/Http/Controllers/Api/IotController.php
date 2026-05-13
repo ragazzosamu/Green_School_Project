@@ -20,6 +20,8 @@ class IotController extends Controller
      * Calcola il delta kWh dell'intervallo (5s) e lo accumula sulla sessione.
      * Fa il broadcast del nuovo incremento per aggiornare la dashboard in tempo reale.
      */
+
+    // Questa funzione diventa fine ricarica
     public function Incremento_Ricarica(Request $request)
     {
         $data = $request->validate([
@@ -28,6 +30,7 @@ class IotController extends Controller
             'id_punto'  => ['required', 'string'],
         ]);
 
+        // questa funzione sarà tolta
         $intervallo = 5 / 3600;
         $KW         = ($data['voltaggio'] * $data['corrente']) / 1000;
         $deltaKWh   = $KW * $intervallo;
@@ -44,47 +47,36 @@ class IotController extends Controller
      * Fa il broadcast per tenere aggiornata la mappa in tempo reale.
      */
     public function Heartbeat(Request $request)
-{
-    $stazione = $request->attributes->get('stazione');
+    {
+        $stazione = $request->attributes->get('stazione');
 
-    $stazione->update([
-        'data_ultimo_heartbeat' => now(),
-        'stato_hardware'        => 'online',
-    ]);
+        $stazione->update([
+            'data_ultimo_heartbeat' => now(),
+            'stato_hardware'        => 'online',
+        ]);
 
-    $data = $request->validate([
-        'punti'                  => ['required', 'array'],
-        'punti.*.id_punto'       => ['required', 'string'],
-        'punti.*.stato_hardware' => ['required', 'string', 'in:online,offline,guasto,manutenzione_programmata'],
-    ]);
+        $data = $request->validate([
+            'id_punto'               => ['required', 'string'],
+        ]);
 
-    foreach ($data['punti'] as $punto) {
-        Punti_ricarica::where('id_punto', $punto['id_punto'])
+        Punti_ricarica::where('id_punto', $data['id_punto'])
             ->update([
-                'stato_hardware'        => $punto['stato_hardware'],
                 'data_ultimo_heartbeat' => now(),
             ]);
-
-        PuntoHardwareStatusChanged::dispatch(
-            $punto['id_punto'],
-            $punto['stato_hardware'],
-            $stazione->id_stazione,
-        );
+        
     }
-}
 
     /**
      * Riceve un cambio di stato hardware esplicito (es. guasto, manutenzione).
      * Aggiorna ogni punto coinvolto e fa il broadcast del nuovo stato.
      * Dopodichè ricalcola la disponibilità complessiva della stazione.
      */
-    public function Cambio_stato_hardware(Request $request)
+    public function Cambio_stato_hardware_punto(Request $request)
     {
         $stazione = $request->attributes->get('stazione');
 
         $data = $request->validate([
-            'punti'                  => ['required', 'array'],
-            'punti.*.id_punto'       => ['required', 'string', 'exists:punti_ricarica,id_punto'],
+            'id_punto'       => ['required', 'string', 'exists:punti_ricarica,id_punto'],
             'punti.*.stato_hardware' => ['required', 'string', 'in:online,offline,guasto,manutenzione_programmata'],
         ]);
 

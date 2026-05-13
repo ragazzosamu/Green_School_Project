@@ -3,6 +3,8 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\WebAuthController;
 use App\Models\Stazioni; // <--- Importante per caricare i dati nella rotta
+use App\Http\Controllers\Api\StationController;
+use Illuminate\Http\Request;
 
 // Se l'utente va all'indirizzo base (/), lo mandiamo automaticamente al login
 Route::get('/', function () {
@@ -26,12 +28,25 @@ Route::get('/map', function () {
 
 // --- NUOVA ROTTA: DETTAGLIO COLONNINA (PUNTI DI RICARICA) ---
 // Questa è la rotta che serve per aprire la pagina delle prese quando clicchi sul pallino
-Route::get('/stazione/{id}', function ($id) {
-    // Carichiamo la stazione con tutte le sue prese (puntiRicarica) per il rendering.
-    // Il nonce per l'anti-replay non viene piu' generato qui: lo crea l'API
-    // GET /api/station/{id}, che il frontend chiama prima di aprire lo scanner.
-    $stazione = Stazioni::with('puntiRicarica')->findOrFail($id);
+Route::get('/stazione/{id}', function (string $id, Request $request) {
+    // 1. Chiamiamo direttamente il metodo 'show' del controller API
+    $response = app(StationController::class)->show($id, $request);
 
+    // 2. Verifichiamo se l'API ha restituito un errore (es. 404)
+    if ($response->getStatusCode() === 404) {
+        // Mostriamo la pagina 404 di default di Laravel
+        abort(404, 'Stazione non trovata'); 
+    }
+
+    // 3. Estraiamo i dati dalla risposta JSON
+    // $response->getData() converte il JSON in un oggetto PHP (stdClass)
+    // che conterrà 'status' e 'data' (come definito nel tuo controller)
+    $stazione = $response->getData()->data;
+    
+    // Trasformi l'array semplice in una Collection "intelligente"
+    $stazione->puntiRicarica = collect($stazione->punti_ricarica);
+
+    // 4. Restituiamo la vista passando i dati
     return view('station-detail', [
         'stazione' => $stazione
     ]);
