@@ -14,6 +14,7 @@ use App\Services\QrService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Http;
 
 
 /**
@@ -160,40 +161,39 @@ class SessionController extends Controller
      * @return JsonResponse          200 con i dati della sessione conclusa,
      * oppure 409 in caso di errore.
      */
-    public function InterrompiSessione(string $id, Request $request): JsonResponse
+    public function InterrompiSessione(string $id_sessione, Request $request): JsonResponse
     {
-        $id_punto = $id;
-
-        $data = $request->validate([
-            'id_stazione' => ['required', 'string'],
-             
-        ]);
-        // Invoca la procedura di chiusura sessione e legge l'esito tramite parametri OUT
-        DB::statement('CALL sp_interrompi_sessione(?, @successo, @messaggio)', [
-            $id_sessione,
-        ]);
-
-        $result = DB::selectOne('SELECT @successo as successo, @messaggio as messaggio');
-
-        // La procedura comunica eventuali errori (sessione non trovata, già chiusa, ecc.)
-        // tramite p_successo = 0, senza lanciare eccezioni
-        if (! $result->successo) {
-            return response()->json(['error' => $result->messaggio], 409);
-        }
-
-        // Ricarica la sessione dal DB per restituire i dati aggiornati al termine
+        // Recupero la sessione e l'id_punto da cui sta caricando l'utente.
         $sessione = Sessioni_ricarica::findOrFail($id_sessione);
 
-        $statoStazione = Stazioni :: statoAggregatoPerPunto($data['id_punto']);
-        
-        // Si è liberato un punto, la stazione torna libera
-        if($statoStazione->liberi === 1)
-        {
-            StazioneStatusChanged :: dispatch($data['id_stazione'],true);
+        if ($sessione->data_fine !== null) {
+            return response()->json(['error' => 'Sessione già conclusa'], 409);
+        }
+
+        // Lo stop "fisico" della ricarica non lo facciamo qui: lo fa la
+        // colonnina. Le mandiamo un comando via il WS-server Node che lei
+        // ascolta sul canale del proprio punto. La colonnina poi chiamerà
+        // /api/{id_punto}/termina_sessione e chiuderà la sessione su DB.
+        try {
+            Http::withHeaders([
+                'X-Internal-Token' => env('WS_INTERNAL_TOKEN', 'dev-internal-token-change-me'),
+            ])->timeout(3)->post(env('WS_BROADCAST_URL', 'http://ws-node:8080/broadcast'), [
+                'channel' => "punto.{$sessione->id_punto}",
+                'event'   => 'sessione.stop',
+                'data'    => [
+                    'id_sessione' => $sessione->id_sessione,
+                    'id_punto'    => $sessione->id_punto,
+                    'origine'     => 'browser',
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('[InterrompiSessione] broadcast WS fallito', ['err' => $e->getMessage()]);
         }
 
         return response()->json([
-            'data' => $sessione,
-        ]);
+            'status'      => 'stop_inviato',
+            'id_sessione' => $sessione->id_sessione,
+            'id_punto'    => $sessione->id_punto,
+        ], 202);
     }
 }

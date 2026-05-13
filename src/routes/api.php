@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\StationController;
 use App\Http\Controllers\Api\SessionController;
+use App\Http\Controllers\Api\IotController;
 
 // Rotta pubblica per login da dispositivi esterni (Postman/Python)
 Route::post('/login', [AuthController::class, 'login']);
@@ -27,4 +28,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/session/{id}/stop',[SessionController::class, 'InterrompiSessione']);
     
     Route::post('/logout', [AuthController::class, 'logout']);
+});
+
+// Rotte IoT (ESP32 / simulatore) — autenticate tramite X-Device-Token
+Route::middleware('device.token')->group(function () {
+    Route::post('/heartbeat_punto', [IotController::class, 'Heartbeat']);
+    Route::post('/{id_punto}/termina_sessione', [IotController::class, 'TerminaSessione']);
 });

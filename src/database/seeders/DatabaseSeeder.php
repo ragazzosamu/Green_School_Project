@@ -45,16 +45,30 @@ class DatabaseSeeder extends Seeder
 
         Punti_ricarica::create
         ([
-        'id_punto' => '03ad4c87-612e-304e-a4ba-0774eea23b49',
-        'id_stazione' => 'c1d1d1c3-2806-3007-8f48-33f2b28c4839',
-        'identificativo_fisico' => 'Presa ' . fake()->bothify('#-??'),
-        'tipo_veicolo' => fake()->randomElement(['bici', 'monopattino']),
-        'tipo_connettore' => 'Schuko',
-        'potenza_max_kw' => fake()->randomFloat(2, 0.5, 1.5),
-        'stato_hardware' => 'online',
-        'data_ultimo_heartbeat' => now(), // Heartbeat "vivo"
-        'tariffa_predefinita' => 0.00,
-        'metodi_autenticazione_supportati' => 'QR_CODE, RFID',
+            'id_punto' => '03ad4c87-612e-304e-a4ba-0774eea23b49',
+            'id_stazione' => 'c1d1d1c3-2806-3007-8f48-33f2b28c4839',
+            'identificativo_fisico' => 'Presa ' . fake()->bothify('#-??'),
+            'tipo_veicolo' => fake()->randomElement(['bici', 'monopattino']),
+            'tipo_connettore' => 'Schuko',
+            'potenza_max_kw' => fake()->randomFloat(2, 0.5, 1.5),
+            'stato_hardware' => 'online',
+            'data_ultimo_heartbeat' => now(), // Heartbeat "vivo"
+            'tariffa_predefinita' => 0.00,
+            'metodi_autenticazione_supportati' => 'QR_CODE, RFID',
+        ]);
+
+        Punti_ricarica::create
+        ([
+            'id_punto' => 'c6510a93-cdd9-3730-a5ff-2105e69fc62e',
+            'id_stazione' => 'c1d1d1c3-2806-3007-8f48-33f2b28c4839',
+            'identificativo_fisico' => 'Presa ' . fake()->bothify('#-??'),
+            'tipo_veicolo' => fake()->randomElement(['bici', 'monopattino']),
+            'tipo_connettore' => 'Schuko',
+            'potenza_max_kw' => fake()->randomFloat(2, 0.5, 1.5),
+            'stato_hardware' => 'online',
+            'data_ultimo_heartbeat' => now(), // Heartbeat "vivo"
+            'tariffa_predefinita' => 0.00,
+            'metodi_autenticazione_supportati' => 'QR_CODE, RFID',
         ]);
 
         \App\Models\Utenti::factory(10)->create();
