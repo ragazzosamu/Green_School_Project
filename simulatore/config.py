@@ -9,6 +9,7 @@ def richiedi(chiave: str) ->str:
         raise RuntimeError(f"[CONFIG] Variabile mancante nel .env: {chiave}")
     return val
 
+BACKEND_URL = richiedi('BACKEND_URL')
 ID_STAZIONE = richiedi('ID_STAZIONE')
 TOKEN_STAZIONE = richiedi('TOKEN_STAZIONE')
 BACKEND_URL = richiedi('BACKEND_URL')

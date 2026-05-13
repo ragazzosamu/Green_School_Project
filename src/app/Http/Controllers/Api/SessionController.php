@@ -162,11 +162,11 @@ class SessionController extends Controller
      */
     public function InterrompiSessione(string $id, Request $request): JsonResponse
     {
-        $id_sessione = $id;
+        $id_punto = $id;
 
         $data = $request->validate([
             'id_stazione' => ['required', 'string'],
-            'id_punto'    => ['required', 'string'],
+             
         ]);
         // Invoca la procedura di chiusura sessione e legge l'esito tramite parametri OUT
         DB::statement('CALL sp_interrompi_sessione(?, @successo, @messaggio)', [
