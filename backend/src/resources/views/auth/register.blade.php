@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GreenSchool — Accedi</title>
+    <title>GreenSchool — Registrati</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,800;1,700&family=Geist:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -138,14 +138,13 @@
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            padding: 3rem 1.25rem 4rem;
-            gap: 0;
+            padding: 2.5rem 1.25rem 3rem;
         }
 
         /* ── HEADLINE ── */
         .headline-wrap {
             text-align: center;
-            margin-bottom: 2.25rem;
+            margin-bottom: 1.75rem;
             animation: riseUp 0.55s cubic-bezier(0.16,1,0.3,1) both;
         }
 
@@ -161,7 +160,7 @@
             font-weight: 500;
             color: #7EEAAA;
             letter-spacing: 0.05em;
-            margin-bottom: 1.3rem;
+            margin-bottom: 1.1rem;
         }
 
         .pill-dot {
@@ -179,11 +178,11 @@
 
         .main-headline {
             font-family: 'Instrument Serif', Georgia, serif;
-            font-size: clamp(2.6rem, 6vw, 4rem);
+            font-size: clamp(2.2rem, 5vw, 3.2rem);
             color: #FFFFFF;
             letter-spacing: -0.045em;
             line-height: 1.02;
-            margin-bottom: 0.9rem;
+            margin-bottom: 0.75rem;
         }
 
         .main-headline em {
@@ -192,17 +191,17 @@
         }
 
         .main-sub {
-            font-size: 0.88rem;
+            font-size: 0.85rem;
             color: rgba(255,255,255,0.32);
             max-width: 310px;
             margin: 0 auto;
             line-height: 1.65;
         }
 
-        /* ── LOGIN CARD ── */
-        .login-card {
+        /* ── REGISTER CARD ── */
+        .register-card {
             width: 100%;
-            max-width: 410px;
+            max-width: 440px;
             background: #FFFFFF;
             border-radius: 20px;
             overflow: hidden;
@@ -231,12 +230,12 @@
         }
 
         .card-body {
-            padding: 2.25rem 2.25rem 2rem;
+            padding: 2rem 2.25rem 1.75rem;
         }
 
         .card-title {
             font-family: 'Instrument Serif', Georgia, serif;
-            font-size: 1.55rem;
+            font-size: 1.45rem;
             color: var(--text);
             letter-spacing: -0.03em;
             margin-bottom: 3px;
@@ -245,18 +244,26 @@
         .card-sub {
             font-size: 0.8rem;
             color: var(--text-3);
-            margin-bottom: 1.75rem;
+            margin-bottom: 1.5rem;
         }
 
         /* Form fields */
-        .field-group { margin-bottom: 1rem; }
+        .fields-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.75rem;
+            margin-bottom: 0.85rem;
+        }
+
+        .field-group { margin-bottom: 0.85rem; }
+        .field-group:last-of-type { margin-bottom: 0; }
 
         .field-label {
             display: block;
             font-size: 0.75rem;
             font-weight: 500;
             color: var(--text-2);
-            margin-bottom: 6px;
+            margin-bottom: 5px;
         }
 
         .field-input {
@@ -286,6 +293,31 @@
             margin-top: 4px;
         }
 
+        /* Selezione tipo account */
+        .tipo-select {
+            width: 100%;
+            background: #F7F6F2;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 11px 14px;
+            font-size: 0.9rem;
+            color: var(--text);
+            font-family: 'Geist', sans-serif;
+            outline: none;
+            appearance: none;
+            cursor: pointer;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23A8A69E' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 14px center;
+            transition: border-color 0.15s, box-shadow 0.15s;
+        }
+
+        .tipo-select:focus {
+            border-color: var(--accent-mid);
+            box-shadow: 0 0 0 3px rgba(42,107,74,0.1);
+            background-color: #fff;
+        }
+
         .submit-btn {
             width: 100%;
             background: var(--accent);
@@ -297,7 +329,7 @@
             font-size: 0.88rem;
             font-weight: 600;
             cursor: pointer;
-            margin-top: 0.6rem;
+            margin-top: 1rem;
             letter-spacing: 0.01em;
             transition: background 0.15s, box-shadow 0.15s, transform 0.1s;
             box-shadow: 0 2px 12px rgba(42,107,74,0.3);
@@ -310,30 +342,7 @@
 
         .submit-btn:active { transform: scale(0.99); }
 
-        /* Feature strip in fondo alla card */
-        .card-features {
-            display: flex;
-            border-top: 1px solid var(--border);
-        }
-
-        .cf-item {
-            flex: 1;
-            padding: 14px 8px;
-            text-align: center;
-            border-right: 1px solid var(--border);
-        }
-
-        .cf-item:last-child { border-right: none; }
-
-        .cf-icon { font-size: 1rem; margin-bottom: 3px; }
-
-        .cf-label {
-            font-size: 0.64rem;
-            color: var(--text-3);
-            line-height: 1.35;
-        }
-
-        /* Link registrati */
+        /* Link accedi */
         .card-footer-link {
             border-top: 1px solid var(--border);
             padding: 14px 2.25rem;
@@ -349,6 +358,17 @@
         }
 
         .card-footer-link a:hover { text-decoration: underline; }
+
+        /* Alert errori generali */
+        .alert-error {
+            background: #FDF0EE;
+            border: 1px solid #EBCECA;
+            border-radius: 10px;
+            padding: 10px 14px;
+            font-size: 0.8rem;
+            color: var(--red);
+            margin-bottom: 1rem;
+        }
 
         /* ── FOOTER ── */
         footer {
@@ -389,25 +409,53 @@
         <div class="headline-wrap">
             <div class="status-pill">
                 <span class="pill-dot"></span>
-                Ricarica intelligente
+                Crea il tuo account
             </div>
-            <h1 class="main-headline">Bentornato<em>.</em></h1>
-            <p class="main-sub">Accedi per gestire le colonnine di ricarica del tuo istituto in tempo reale.</p>
+            <h1 class="main-headline">Benvenuto<em>.</em></h1>
+            <p class="main-sub">Registrati per accedere alle colonnine di ricarica del tuo istituto.</p>
         </div>
 
-        <div class="login-card">
+        <div class="register-card">
             <div class="card-strip"></div>
             <div class="card-body">
-                <h2 class="card-title">Accedi</h2>
-                <p class="card-sub">Inserisci le credenziali del tuo account</p>
+                <h2 class="card-title">Registrati</h2>
+                <p class="card-sub">Compila i dati per creare il tuo account</p>
 
-                <form method="POST" action="{{ route('login') }}">
+                @if ($errors->any())
+                    <div class="alert-error">
+                        {{ $errors->first() }}
+                    </div>
+                @endif
+
+                <form method="POST" action="{{ route('register') }}">
                     @csrf
+
+                    <div class="fields-row">
+                        <div class="field-group" style="margin-bottom:0;">
+                            <label class="field-label" for="nome">Nome</label>
+                            <input class="field-input" id="nome" type="text" name="nome"
+                                   value="{{ old('nome') }}" required autocomplete="given-name"
+                                   placeholder="Mario">
+                            @error('nome')
+                                <p class="field-error">{{ $message }}</p>
+                            @enderror
+                        </div>
+
+                        <div class="field-group" style="margin-bottom:0;">
+                            <label class="field-label" for="cognome">Cognome</label>
+                            <input class="field-input" id="cognome" type="text" name="cognome"
+                                   value="{{ old('cognome') }}" required autocomplete="family-name"
+                                   placeholder="Rossi">
+                            @error('cognome')
+                                <p class="field-error">{{ $message }}</p>
+                            @enderror
+                        </div>
+                    </div>
 
                     <div class="field-group">
                         <label class="field-label" for="email">Indirizzo email</label>
                         <input class="field-input" id="email" type="email" name="email"
-                               value="{{ old('email') }}" required autocomplete="email" autofocus
+                               value="{{ old('email') }}" required autocomplete="email"
                                placeholder="nome@scuola.it">
                         @error('email')
                             <p class="field-error">{{ $message }}</p>
@@ -415,36 +463,40 @@
                     </div>
 
                     <div class="field-group">
+                        <label class="field-label" for="cellulare">Cellulare <span style="color:var(--text-3); font-weight:400;">(opzionale)</span></label>
+                        <input class="field-input" id="cellulare" type="tel" name="cellulare"
+                               value="{{ old('cellulare') }}" autocomplete="tel"
+                               placeholder="+39 333 1234567">
+                        @error('cellulare')
+                            <p class="field-error">{{ $message }}</p>
+                        @enderror
+                    </div>
+
+                    
+
+                    <div class="field-group">
                         <label class="field-label" for="password">Password</label>
                         <input class="field-input" id="password" type="password" name="password"
-                               required autocomplete="current-password"
-                               placeholder="••••••••">
+                               required autocomplete="new-password"
+                               placeholder="Minimo 8 caratteri">
                         @error('password')
                             <p class="field-error">{{ $message }}</p>
                         @enderror
                     </div>
 
-                    <button type="submit" class="submit-btn">Accedi al portale →</button>
+                    <div class="field-group">
+                        <label class="field-label" for="password_confirmation">Conferma password</label>
+                        <input class="field-input" id="password_confirmation" type="password"
+                               name="password_confirmation" required autocomplete="new-password"
+                               placeholder="Ripeti la password">
+                    </div>
+
+                    <button type="submit" class="submit-btn">Crea account →</button>
                 </form>
             </div>
 
             <div class="card-footer-link">
-                Non hai un account? <a href="{{ route('register') }}">Registrati</a>
-            </div>
-
-            <div class="card-features">
-                <div class="cf-item">
-                    <div class="cf-icon">⚡</div>
-                    <div class="cf-label">Tempo reale</div>
-                </div>
-                <div class="cf-item">
-                    <div class="cf-icon">📍</div>
-                    <div class="cf-label">Mappa live</div>
-                </div>
-                <div class="cf-item">
-                    <div class="cf-icon">📊</div>
-                    <div class="cf-label">Storico</div>
-                </div>
+                Hai già un account? <a href="{{ route('login') }}">Accedi</a>
             </div>
         </div>
 
