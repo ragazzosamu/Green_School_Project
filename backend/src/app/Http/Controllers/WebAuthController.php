@@ -83,4 +83,45 @@ class WebAuthController extends Controller
         // Riportiamo l'utente alla pagina di login.
         return redirect('/login');
     }
+    public function showRegister()
+{
+    return view('auth.register');
+}
+
+public function register(Request $request)
+{
+    $request->validate([
+        'nome'                 => ['required', 'string', 'max:100'],
+        'cognome'              => ['required', 'string', 'max:100'],
+        'email'                => ['required', 'email', 'max:255', 'unique:utenti,email'],
+        'cellulare'            => ['nullable', 'string', 'max:20'],
+        'tipo_account'         => ['required', 'in:studente,docente,personale,completo'],
+        'password'             => ['required', 'confirmed', 'min:8'],
+    ], [
+        'email.unique'         => 'Questa email è già registrata.',
+        'password.confirmed'   => 'Le password non coincidono.',
+        'password.min'         => 'La password deve essere di almeno 8 caratteri.',
+        'tipo_account.in'      => 'Tipo account non valido.',
+    ]);
+
+    $utente = \App\Models\Utenti::create([
+        'id_utente'    => \Illuminate\Support\Str::uuid()->toString(),
+        'nome'         => $request->nome,
+        'cognome'      => $request->cognome,
+        'email'        => $request->email,
+        'cellulare'    => $request->cellulare,
+        'tipo_account' => 'completo',
+        'password'     => \Illuminate\Support\Facades\Hash::make($request->password),
+        'attivo'       => 1,
+    ]);
+
+    Auth::login($utente);
+    $request->session()->regenerate();
+
+    $utente->tokens()->delete();
+    $token = $utente->createToken('web-access')->plainTextToken;
+    session(['api_token' => $token]);
+
+    return redirect()->intended('map');
+}
 }
