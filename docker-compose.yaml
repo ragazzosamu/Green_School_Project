@@ -32,7 +32,23 @@ services:
     volumes:
       - ./backend/src:/var/www/html
       - ./vhost.conf:/etc/apache2/sites-available/000-default.conf
-    command: sh -c "composer install --no-interaction && apache2-foreground"
+    # NOTA SUI PERMESSI:
+    # Dentro al container Apache/Laravel gira come utente "www-data", NON root.
+    # La cartella ./backend/src e' un bind mount: i file mantengono owner e
+    # permessi dell'host, non quelli del container. Quindi a "www-data" servono
+    # i permessi di SCRITTURA su:
+    #   - storage/         (cache, log, sessioni, file caricati)
+    #   - bootstrap/cache/ (package manifest generato da composer install)
+    # Su Windows (Docker Desktop) il mount e' di solito tutto accessibile e
+    # "funziona e basta"; su Linux/Mac no: se i file appartengono a un altro
+    # utente esce un errore tipo "directory must be present and writable".
+    # Per questo facciamo il chmod a runtime, DOPO il mount del volume e PRIMA
+    # che Laravel scriva (un chmod nel Dockerfile verrebbe coperto dal mount).
+    # Stesso tipo di problema che puo' capitare a Mosquitto con config/data/log.
+    command: >
+      sh -c "chmod -R 777 storage bootstrap/cache &&
+             composer install --no-interaction &&
+             apache2-foreground"
     networks:
       - green-network
     depends_on:
