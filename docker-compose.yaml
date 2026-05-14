@@ -46,7 +46,8 @@ services:
     # che Laravel scriva (un chmod nel Dockerfile verrebbe coperto dal mount).
     # Stesso tipo di problema che puo' capitare a Mosquitto con config/data/log.
     command: >
-      sh -c "chmod -R 777 storage bootstrap/cache &&
+      sh -c "mkdir -p bootstrap/cache &&
+             chmod -R 777 storage bootstrap/cache &&
              composer install --no-interaction &&
              apache2-foreground"
     networks:

@@ -9,7 +9,10 @@
 /storage/*.key
 /storage/pail/
 /auth.json
-/bootstrap/cache/
+# NB: NON ignorare tutta /bootstrap/cache/ — cancellerebbe dal repo anche il
+# .gitignore interno, e git non riuscirebbe a preservare la cartella vuota.
+# I file generati dentro bootstrap/cache/ sono gia' ignorati dal .gitignore
+# che sta dentro quella cartella (pattern "*" + "!.gitignore").
 
 # ----------------------------------------------------------------------
 # AMBIENTE & CONFIGURAZIONI (Mai committare credenziali!)
