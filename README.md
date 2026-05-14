@@ -114,11 +114,19 @@ docker exec -it green_app php artisan app:stampa-token
 ### Gestione container
 ```bash
 docker-compose stop          # Ferma i container (senza eliminarli)
-docker-compose down          # Spegne e rimuove i container
-docker-compose up -d --build # Ricostruisce le immagini e riavvia
+docker-compose down          # Spegne e rimuove i container (immagini e volumi restano)
+docker-compose down --rmi all # Spegne e rimuove anche le IMMAGINI
+docker-compose up -d          # Avvia (riusa le immagini esistenti, NON ricostruisce)
+docker-compose up -d --build # Avvia RICOSTRUENDO le immagini (rifà pip install / composer install)
 docker logs -f green_app     # Log PHP in tempo reale
 docker logs -f green_simulatore   # Log del simulatore colonnine
 ```
+
+> 💡 **Quando serve `--build`?** Il codice (`.py`, `.php`) è montato come volume, quindi
+> le modifiche si vedono subito senza ricostruire. Ma le **dipendenze** (`requirements.txt`,
+> `composer.json`) sono installate *dentro l'immagine*: se le cambi devi rifare il build,
+> altrimenti Docker riusa l'immagine vecchia con le dipendenze vecchie.
+> Vedi la sezione [Volumi vs Immagine](#-volumi-vs-immagine--cosa-cambia-dove).
 
 ### Pulire la cache di Laravel
 ```bash
@@ -138,13 +146,50 @@ docker-compose down -v               # Spegne e rimuove container + volumi
 docker-compose up -d --build         # Ricostruisce e riavvia tutto
 docker exec -it green_app php artisan migrate:fresh --seed   # Ricrea il database
 ```
-Se anche le immagini sono corrotte o vuoi liberare spazio:
+Se vuoi azzerare **anche le immagini** (es. dopo aver cambiato `requirements.txt` /
+`composer.json` o se l'immagine è corrotta):
+```bash
+docker-compose down -v --rmi all     # Rimuove container + volumi + immagini del progetto
+docker-compose up -d --build         # Ricostruisce tutto da zero
+docker exec -it green_app php artisan migrate:fresh --seed
+```
+Per liberare spazio in modo aggressivo (rimuove anche immagini/cache di altri progetti):
 ```bash
 docker-compose down -v
 docker system prune -af              # Rimuove immagini, build cache e roba inutilizzata
 docker-compose up -d --build
 docker exec -it green_app php artisan migrate:fresh --seed
 ```
+
+---
+
+## 📦 Volumi vs Immagine — cosa cambia dove
+
+Capire questa distinzione evita il 90% dei "perché non funziona se ho già modificato il file?".
+
+**L'immagine** è la "fotografia" costruita dal `Dockerfile`: dentro ci finiscono il sistema,
+gli strumenti e le **dipendenze installate** (`pip install -r requirements.txt`,
+`composer install`). Si crea/aggiorna solo con un **build**.
+
+**Il volume** (bind mount, es. `./simulatore:/simulatore` o `./backend/src:/var/www/html`)
+è una cartella del tuo PC "prestata" al container: i file sono gli stessi, quindi se
+modifichi il codice sull'host lo vedi subito anche nel container, **senza ricostruire**.
+
+Il punto chiave: **il volume monta SOPRA l'immagine**. Quindi il codice viene dal tuo PC,
+ma le dipendenze NO — quelle stanno in posti dell'immagine (`site-packages`, `vendor/`)
+che il volume non tocca.
+
+| Cosa hai cambiato | Serve il rebuild? | Comando |
+|---|---|---|
+| Codice (`.py`, `.php`, `.blade.php`) | ❌ No, basta il volume | il file è già aggiornato |
+| `requirements.txt` / `composer.json` | ✅ Sì | `docker-compose up -d --build` |
+| `Dockerfile` | ✅ Sì | `docker-compose up -d --build` |
+| `docker-compose.yaml` | ❌ No (ricrea il container) | `docker-compose up -d` |
+
+> Esempio concreto: il simulatore gira sul codice montato da `./simulatore`, quindi se
+> tocchi `stazione.py` la modifica c'è subito. Ma se aggiungi una libreria a
+> `requirements.txt`, finché non fai `--build` il `pip install` non viene rifatto e il
+> container continua a girare senza quella libreria → `ModuleNotFoundError`.
 
 ### Ispezionare MQTT
 ```bash

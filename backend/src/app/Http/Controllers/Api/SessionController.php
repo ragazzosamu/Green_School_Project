@@ -47,17 +47,6 @@ class SessionController extends Controller
 
 
     // QUesta funzione diventerà di autenticazione. L'altra parte verrà gestita da un worker che comunica con MQTT
-    //
-    // NOTA — gestione dei due ordini possibili (cavo / QR):
-    // La colonnina è "stupida": pubblica solo gli eventi fisici (cavo_collegato /
-    // cavo_scollegato) e obbedisce ai comandi START/STOP via MQTT. Spetta a Laravel
-    // tenere lo stato e abbinare le due cose. Per ogni punto vanno tracciate:
-    //   1) cavo fisicamente collegato?  -> aggiornato dagli eventi/heartbeat MQTT
-    //   2) sessione in attesa?          -> creata qui da AvvioSessione (scan QR)
-    // Lo START si manda solo quando ENTRAMBE sono vere; lo fa scattare chi arriva per ultimo:
-    //   - QR per ultimo  -> qui controlliamo se il cavo è già collegato e mandiamo START subito;
-    //   - cavo per ultimo -> ci pensa il worker MQTT abbinando l'evento alla sessione in attesa.
-    // Il worker gestisce anche il timeout dei 60s (QR scansionato ma cavo mai collegato -> annulla).
     public function AvvioSessione(Request $request): JsonResponse
     {
         // Validazione dei campi obbligatori: id punto e firma HMAC/hash a 64 caratteri
@@ -135,37 +124,7 @@ class SessionController extends Controller
             'reservation_timeout' => 60, // secondi entro cui il cliente deve iniziare la ricarica
         ], 201);
     }
-
-
-
-    /**
-     * Restituisce lo stato corrente di una sessione di ricarica attiva.
-     *
-     * - Carica la sessione tramite il suo ID (404 automatico se non esiste).
-     * - Calcola il tempo trascorso dall'inizio della sessione in minuti.
-     * - Restituisce i kWh erogati e il tempo trascorso.
-     * (Il costo parziale è momentaneamente commentato in attesa della logica tariffaria.)
-     *
-     * @param  string  $id_sessione  Identificativo della sessione da interrogare.
-     * @return JsonResponse          200 con kwh_erogati e tempo_trascorso.
-     */
-    public function show(string $id_sessione): JsonResponse
-    {
-        // findOrFail lancia automaticamente un 404 se la sessione non esiste
-        $sessione = Sessioni_ricarica::findOrFail($id_sessione);
-
-        // Differenza in minuti tra adesso e l'orario di avvio della sessione
-        $tempoTrascorso = now()->diffInMinutes($sessione->data_inizio);
-
-        // TODO: recuperare la tariffa attiva e calcolare il costo parziale
-        # $costoParziale = round($sessione->quantita_kwh * $tariffaAttiva->prezzo_per_kwh, 2);
-
-        return response()->json([
-            'kwh_erogati'     => $sessione->quantita_kwh,
-            'tempo_trascorso' => $tempoTrascorso,
-            # 'costo_parziale' => $costoParziale,
-        ]);
-    }
+    
 
     /**
      * Interrompe anticipatamente una sessione di ricarica in corso.
@@ -216,5 +175,34 @@ class SessionController extends Controller
             'id_sessione' => $sessione->id_sessione,
             'id_punto'    => $sessione->id_punto,
         ], 202);
+    }
+
+    /**
+     * Restituisce lo stato corrente di una sessione di ricarica attiva.
+     *
+     * - Carica la sessione tramite il suo ID (404 automatico se non esiste).
+     * - Calcola il tempo trascorso dall'inizio della sessione in minuti.
+     * - Restituisce i kWh erogati e il tempo trascorso.
+     * (Il costo parziale è momentaneamente commentato in attesa della logica tariffaria.)
+     *
+     * @param  string  $id_sessione  Identificativo della sessione da interrogare.
+     * @return JsonResponse          200 con kwh_erogati e tempo_trascorso.
+     */
+    public function show(string $id_sessione): JsonResponse
+    {
+        // findOrFail lancia automaticamente un 404 se la sessione non esiste
+        $sessione = Sessioni_ricarica::findOrFail($id_sessione);
+
+        // Differenza in minuti tra adesso e l'orario di avvio della sessione
+        $tempoTrascorso = now()->diffInMinutes($sessione->data_inizio);
+
+        // TODO: recuperare la tariffa attiva e calcolare il costo parziale
+        # $costoParziale = round($sessione->quantita_kwh * $tariffaAttiva->prezzo_per_kwh, 2);
+
+        return response()->json([
+            'kwh_erogati'     => $sessione->quantita_kwh,
+            'tempo_trascorso' => $tempoTrascorso,
+            # 'costo_parziale' => $costoParziale,
+        ]);
     }
 }

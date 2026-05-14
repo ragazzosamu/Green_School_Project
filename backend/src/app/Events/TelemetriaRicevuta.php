@@ -10,14 +10,14 @@ use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
-class HeartbeatRicevuto implements ShouldBroadcast
+class TelemetriaRicevuta implements ShouldBroadcast
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
     /**
      * Create a new event instance.
      */
-    public function __construct(public $idPunto, public $deltaKwh)
+    public function __construct(public $idPunto, public $deltaKwh, public $id_sessione)
     {}
 
     /**
@@ -49,6 +49,7 @@ class HeartbeatRicevuto implements ShouldBroadcast
             'id_punto'   => $this->idPunto,
             'cambiamento_kwh'     => $this->deltaKwh,
             'data_cambiamento'  => now()->timestamp,
+            'id_sessione' =>  $this->id_sessione,
         ];
     }
 }

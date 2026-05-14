@@ -40,4 +40,9 @@ return [
     'domain' => env('QR_DOMAIN'),
     ],
 
+    'mqtt' => [
+        'host' => env('MQTT_HOST', 'localhost'),
+        'port' => env('MQTT_PORT', 1883),
+    ],
+
 ];
