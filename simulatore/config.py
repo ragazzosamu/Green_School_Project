@@ -9,14 +9,9 @@ def richiedi(chiave: str) -> str:
         raise RuntimeError(f"[CONFIG] Variabile mancante nel .env: {chiave}")
     return val
 
-# --- Backend Laravel ---
-BACKEND_URL    = richiedi('BACKEND_URL')
-ID_STAZIONE    = richiedi('ID_STAZIONE')
-TOKEN_STAZIONE = richiedi('TOKEN_STAZIONE')
-
-TIMEOUT_AUTH       = int(os.getenv("TIMEOUT_AUTH",       "60"))
-METER_INTERVAL     = int(os.getenv("METER_INTERVAL",     "5"))
-HEARTBEAT_INTERVAL = int(os.getenv("HEARTBEAT_INTERVAL", "60"))
+# --- Identità della stazione ---
+ID_STAZIONE = richiedi('ID_STAZIONE')
+BACKEND_URL = richiedi('BACKEND_URL')
 
 # --- Punti gestiti da questa stazione ---
 # Leggiamo ID_PUNTO1, ID_PUNTO2, ... finché ne troviamo nel .env.
@@ -33,11 +28,12 @@ while True:
 if not ID_PUNTI:
     raise RuntimeError("[CONFIG] Nessun ID_PUNTO trovato nel .env (atteso ID_PUNTO1, ID_PUNTO2, ...)")
 
-# --- WebSocket server Node ---
-WS_URL           = os.getenv('WS_URL',           'ws://ws-node:8080/')
-WS_STATION_TOKEN = os.getenv('WS_STATION_TOKEN', 'dev-station-token-change-me')
+# --- MQTT (broker Mosquitto) ---
+MQTT_HOST              = os.getenv('MQTT_HOST') or 'localhost'
+MQTT_PORT              = int(os.getenv('MQTT_PORT') or '1883')
+MQTT_NOME_UTENTE       = os.getenv('MQTT_NOME_UTENTE', 'colonnina')
+MQTT_PASSWORD_STAZIONE = os.getenv('MQTT_PASSWORD_STAZIONE', '')
 
-# --- Redis ---
-REDIS_HOST = os.getenv('REDIS_HOST', 'redis')
-REDIS_PORT = int(os.getenv('REDIS_PORT', '6379'))
-REDIS_DB   = int(os.getenv('REDIS_DB',   '0'))
+# --- Intervalli (secondi) ---
+METER_INTERVAL     = int(os.getenv("METER_INTERVAL",     "5"))
+HEARTBEAT_INTERVAL = int(os.getenv("HEARTBEAT_INTERVAL", "60"))

@@ -44,6 +44,20 @@ class SessionController extends Controller
      * @param  Request  $request  Richiesta HTTP con i campi `id_stazione` e `firma`.
      * @return JsonResponse
      */
+
+
+    // QUesta funzione diventerà di autenticazione. L'altra parte verrà gestita da un worker che comunica con MQTT
+    //
+    // NOTA — gestione dei due ordini possibili (cavo / QR):
+    // La colonnina è "stupida": pubblica solo gli eventi fisici (cavo_collegato /
+    // cavo_scollegato) e obbedisce ai comandi START/STOP via MQTT. Spetta a Laravel
+    // tenere lo stato e abbinare le due cose. Per ogni punto vanno tracciate:
+    //   1) cavo fisicamente collegato?  -> aggiornato dagli eventi/heartbeat MQTT
+    //   2) sessione in attesa?          -> creata qui da AvvioSessione (scan QR)
+    // Lo START si manda solo quando ENTRAMBE sono vere; lo fa scattare chi arriva per ultimo:
+    //   - QR per ultimo  -> qui controlliamo se il cavo è già collegato e mandiamo START subito;
+    //   - cavo per ultimo -> ci pensa il worker MQTT abbinando l'evento alla sessione in attesa.
+    // Il worker gestisce anche il timeout dei 60s (QR scansionato ma cavo mai collegato -> annulla).
     public function AvvioSessione(Request $request): JsonResponse
     {
         // Validazione dei campi obbligatori: id punto e firma HMAC/hash a 64 caratteri
@@ -78,6 +92,11 @@ class SessionController extends Controller
         if (! $this->qrService->VerificaFirma($data['id_stazione'], $data['firma'])) {
             return response()->json(['error' => 'Qr_invalido'], 422);
         }
+
+        // va aggiunto il controllo della ricarica
+
+
+
 
         // Invoca la stored procedure passando i parametri IN e destinando i risultati
         // a variabili di sessione MySQL (@), lette subito dopo con una SELECT
@@ -174,6 +193,8 @@ class SessionController extends Controller
         // colonnina. Le mandiamo un comando via il WS-server Node che lei
         // ascolta sul canale del proprio punto. La colonnina poi chiamerà
         // /api/{id_punto}/termina_sessione e chiuderà la sessione su DB.
+
+        //DA Modificare completamente
         try {
             Http::withHeaders([
                 'X-Internal-Token' => env('WS_INTERNAL_TOKEN', 'dev-internal-token-change-me'),

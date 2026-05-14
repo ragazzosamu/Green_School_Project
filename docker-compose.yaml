@@ -25,12 +25,12 @@ services:
 
 
   app:
-    build: .
+    build: ./backend
     container_name: green_app
     ports:
       - "80:80"
     volumes:
-      - ./src:/var/www/html
+      - ./backend/src:/var/www/html
       - ./vhost.conf:/etc/apache2/sites-available/000-default.conf
     command: sh -c "composer install --no-interaction && apache2-foreground"
     networks:
@@ -38,32 +38,35 @@ services:
     depends_on:
       - mariadb
       - redis
+      - mqtt
 
   reverb:
-    build: .                    # stessa immagine dell'app
+    build: ./backend                   # stessa immagine dell'app
     container_name: green_reverb
     ports:
       - "8080:8080"
     volumes:
-      - ./src:/var/www/html     # stesso codice
+      - ./backend/src:/var/www/html     # stesso codice
     command: php /var/www/html/artisan reverb:start --host=0.0.0.0 --port=8080
     networks:
       - green-network
     depends_on:
       - app
       - redis
+      - mqtt
 
   queue:
-    build: .                    # stessa immagine dell'app
+    build: ./backend                    # stessa immagine dell'app
     container_name: green_queue
     volumes:
-      - ./src:/var/www/html     # stesso codice
+      - ./backend/src:/var/www/html     # stesso codice
     command: php /var/www/html/artisan queue:work --sleep=3 --tries=3
     networks:
       - green-network
     depends_on:
       - app
       - redis
+      - mqtt
 
   python:
     build: ./simulatore
@@ -79,6 +82,20 @@ services:
       - reverb
       - mariadb
       - app
+      - mqtt
+  mqtt:
+    image: eclipse-mosquitto:latest
+    container_name: green_mqqt-broker
+    restart: always
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./mqtt/config:/mosquitto/config
+      - ./mqtt/data:/mosquitto/data
+      - ./mqtt/log:/mosquitto/log
+    networks:
+      - green-network
 
 networks:
   # Rete bridge condivisa tra tutti i container per farli comunicare tra loro

@@ -1,13 +1,16 @@
 """
 Console di simulazione: ti mette "davanti" alla colonnina.
 
-La stazione carica tutti i punti elencati nell'env (ID_PUNTO1, ID_PUNTO2, ...).
-Dal menu principale scegli un punto e poi operi su quel punto.
+La Stazione carica tutti i punti elencati nell'env (ID_PUNTO1, ID_PUNTO2, ...)
+e si collega al broker MQTT. Dal menu principale scegli un punto e poi operi
+su quel punto.
 
-NB: l'autenticazione vera arriva via WebSocket da Laravel (evento
-`sessione.pending` sul canale `punto.{id_punto}`). L'opzione [3] qui sotto
-serve solo a simulare a mano quell'evento durante i test, generando un
-finto id_sessione.
+NB sul flusso reale:
+  - il comando di START arriva da Laravel via MQTT sul topic
+    `stazione/{id_punto}/comandi` con payload {"comando":"START","id_sessione":...}
+    e viene gestito da Stazione._on_message → Punto.gestione_messaggio_start();
+  - l'opzione [3] qui sotto chiama direttamente gestione_messaggio_start() per
+    simulare a mano quel comando, senza dover passare dal broker.
 """
 import sys
 import uuid
@@ -19,7 +22,7 @@ MENU_PUNTO = """
 ================ PUNTO {id_breve} ================
   [1] Collega cavo
   [2] Scollega cavo
-  [3] Scansiona QR (autenticazione utente)
+  [3] Simula comando START (QR autorizzato da Laravel)
   [4] Stato punto
   [5] Termina sessione (manualmente)
   [b] Torna alla lista punti
@@ -28,15 +31,21 @@ MENU_PUNTO = """
 > """
 
 
+def _descrizione_sessione(p: Punto_ricarica) -> str:
+    if p.sessione_attuale is not None:
+        return "ricarica in corso"
+    return "libero"
+
+
 def stampa_lista_punti(stazione: Stazione):
     print()
-    print(f"=========== STAZIONE {stazione.id_stazione} ===========")
+    intestazione = f"=========== STAZIONE {stazione.id_stazione} ==========="
+    print(intestazione)
     for i, (id_punto, p) in enumerate(stazione.punti.items(), 1):
-        cavo = "🔌" if p.cavo_connesso else "  "
-        sess = "⚡ ricarica" if p.sessione_attuale else ("⏳ in attesa cavo" if p.stato.name == 'ATTESA_CAVO' else "libero")
-        print(f"  [{i}] {id_punto}  {cavo}  {p.stato.name:<12}  {sess}")
+        cavo = "[cavo]" if p.cavo_connesso else "[----]"
+        print(f"  [{i}] {id_punto}  {cavo}  {p.stato.name:<12}  {_descrizione_sessione(p)}")
     print("  [q] Esci")
-    print("=" * (28 + len(stazione.id_stazione)))
+    print("=" * len(intestazione))
 
 
 def stampa_stato_punto(p: Punto_ricarica):
@@ -45,12 +54,8 @@ def stampa_stato_punto(p: Punto_ricarica):
     print(f"  stato          : {p.stato.name}")
     print(f"  cavo connesso  : {'SI' if p.cavo_connesso else 'NO'}")
 
-    rimasti = p.secondi_rimasti_auth()
-    if rimasti is not None:
-        print(f"  attesa cavo    : {rimasti}s rimasti (sess: {p._pending_id_sessione})")
-
     sess = p.sessione_attuale
-    if sess:
+    if sess is not None:
         print(f"  sessione       : ATTIVA")
         print(f"    id_sessione  : {sess.id_sessione}")
         print(f"    kWh erogati  : {sess.quantita_kwh:.4f}")
@@ -72,22 +77,44 @@ def menu_punto(p: Punto_ricarica) -> str:
 
         if scelta == '1':
             p.collega_cavo()
+
         elif scelta == '2':
             p.scollega_cavo()
+
         elif scelta == '3':
             sid = input("id_sessione da simulare [vuoto = uuid casuale]: ").strip() or str(uuid.uuid4())
-            ok = p.autentica_qr(sid)
-            print("→ autenticazione " + ("ACCETTATA" if ok else "RIFIUTATA"))
+            # Nel flusso reale questo comando arriva via MQTT da Laravel;
+            # qui lo iniettiamo direttamente nel punto.
+            p.gestione_messaggio_start(sid)
+            print(f"→ comando START inviato (id_sessione={sid})")
+
         elif scelta == '4':
             stampa_stato_punto(p)
+
         elif scelta == '5':
-            p.termina_sessione()
+            # Stop manuale da console: il DB lo aggiorna chi ha richiesto lo
+            # stop, quindi non rinotifichiamo il backend.
+            p.termina_sessione(notifica_backend=False)
+
         elif scelta == 'b':
             return 'b'
+
         elif scelta == 'q':
             return 'q'
+
         else:
             print("Scelta non valida.")
+
+
+def chiudi(stazione: Stazione):
+    """Chiusura ordinata: ferma il loop MQTT e disconnette."""
+    print("Uscita...")
+    try:
+        stazione.mqtt.loop_stop()
+        stazione.mqtt.disconnect()
+    except Exception:
+        pass
+    sys.exit(0)
 
 
 def main():
@@ -103,9 +130,7 @@ def main():
             scelta = 'q'
 
         if scelta == 'q':
-            print("Uscita...")
-            stazione.shutdown()
-            sys.exit(0)
+            chiudi(stazione)
 
         try:
             idx = int(scelta)
@@ -120,9 +145,7 @@ def main():
 
         punto = stazione.punti[ids[idx - 1]]
         if menu_punto(punto) == 'q':
-            print("Uscita...")
-            stazione.shutdown()
-            sys.exit(0)
+            chiudi(stazione)
 
 
 if __name__ == "__main__":
