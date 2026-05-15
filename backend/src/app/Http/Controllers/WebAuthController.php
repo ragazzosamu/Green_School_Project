@@ -95,7 +95,7 @@ public function register(Request $request)
         'cognome'              => ['required', 'string', 'max:100'],
         'email'                => ['required', 'email', 'max:255', 'unique:utenti,email'],
         'cellulare'            => ['nullable', 'string', 'max:20'],
-        'tipo_account'         => ['required', 'in:studente,docente,personale,completo'],
+        //'tipo_account'         => ['required', 'in:studente,docente,personale,completo'],
         'password'             => ['required', 'confirmed', 'min:8'],
     ], [
         'email.unique'         => 'Questa email è già registrata.',
