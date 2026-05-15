@@ -58,12 +58,31 @@ Route::get('/stazione/{id}', function (string $id, Request $request) {
 
 // --- ROTTA SESSIONE ATTIVA ---
 Route::get('/session/{uuid}', function ($uuid) {
+    $sessione = \App\Models\Sessioni_ricarica::findOrFail($uuid);
+
     return view('session-active', [
-        'session_uuid' => $uuid
+        'session_uuid' => $sessione->id_sessione,
+        'id_punto'     => $sessione->id_punto,
+        'kwh_iniziali' => (float) ($sessione->quantita_kwh ?? 0),
+        'api_token'    => session('api_token'),
     ]);
 })->name('session.active')->middleware('auth');
 
-Route::get('/profilo', function () {
-    return view('gamification-profile');
+Route::get('/profilo', function (Request $request) {
+    // Stato iniziale renderizzato server-side: se l'utente ha gia' una
+    // sessione attiva la mostriamo subito (senza dover aspettare un evento
+    // WS), così la pagina e' utile anche se viene aperta direttamente.
+    $userId = $request->user()->id_utente;
+
+    $sessioneAttiva = \App\Models\Sessioni_ricarica::where('id_utente', $userId)
+        ->whereNull('data_fine')
+        ->orderByDesc('data_inizio')
+        ->first();
+
+    return view('gamification-profile', [
+        'api_token'       => session('api_token'),
+        // ?attesa=<id_punto> arriva da /stazione/{id} dopo scan QR riuscito.
+        'attesa_punto'    => $request->query('attesa'),
+        'sessione_attiva' => $sessioneAttiva,
+    ]);
 })->name('profilo')->middleware('auth');
- 

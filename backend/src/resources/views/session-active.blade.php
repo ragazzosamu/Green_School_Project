@@ -260,44 +260,125 @@
 
 @push('scripts')
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pusher/8.3.0/pusher.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/laravel-echo@1.15.3/dist/echo.iife.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/laravel-echo@1.16.1/dist/echo.iife.js"></script>
 
 <script>
     window.Pusher = Pusher;
+    // wsHost / wsPort / forceTLS calcolati dall'host della pagina:
+    //   - http://localhost      -> ws://localhost:80/app/{key}    (proxy Apache)
+    //   - https://ngrok.app     -> wss://ngrok.app:443/app/{key}  (TLS via ngrok)
+    const _isHttps = window.location.protocol === 'https:';
     window.Echo = new Echo({
         broadcaster: 'reverb',
         key: '{{ env("VITE_REVERB_APP_KEY") }}',
-        wsHost: '{{ env("VITE_REVERB_HOST") }}',
-        wsPort: {{ env("VITE_REVERB_PORT", 8080) }},
-        forceTLS: false,
+        wsHost:  window.location.hostname,
+        wsPort:  _isHttps ? 443 : 80,
+        wssPort: 443,
+        forceTLS: _isHttps,
         enabledTransports: ['ws', 'wss'],
+        authEndpoint: '/broadcasting/auth',
+        auth: {
+            headers: {
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
+                'Accept':       'application/json',
+            },
+        },
     });
 
-    const sessionUuid = "{{ $session_uuid }}";
+    const sessionUuid     = "{{ $session_uuid }}";
+    const idPunto         = "{{ $id_punto }}";
+    const idUtente        = "{{ Auth::user()->id_utente }}";
+    const dataInizioMs    = Date.now();
+    const PREZZO_PER_KWH  = 0.50; // fallback per costo parziale
+    const KWH_TARGET      = 50;   // per barra di progresso
 
-    window.Echo.private(`session.${sessionUuid}`)
-        .listen('SessioneAggiornata', (e) => {
-            document.getElementById('kwh-display').innerText = e.kwh_erogati.toFixed(2);
-            document.getElementById('time-display').innerText = e.durata;
-            document.getElementById('cost-display').innerText = `€ ${e.costo_parziale.toFixed(2)}`;
+    let kwhTotali = {{ $kwh_iniziali ?? 0 }};
+    aggiornaUI(kwhTotali);
 
-            let per = (e.kwh_erogati / 50) * 100;
-            document.getElementById('progress-bar').style.width = per + '%';
-
-            const els = [
-                document.getElementById('kwh-display'),
-                document.getElementById('box-time'),
-                document.getElementById('box-cost'),
-            ];
-            els[0].classList.add('flash');
-            els[1].classList.add('flash-update');
-            els[2].classList.add('flash-update');
-            setTimeout(() => {
-                els[0].classList.remove('flash');
-                els[1].classList.remove('flash-update');
-                els[2].classList.remove('flash-update');
-            }, 700);
+    // Backend pubblica TelemetriaRicevuta come '.ricarica.heartbeat' sul canale
+    // PRIVATO user.{id_utente}: solo l'utente autorizzato lo riceve.
+    window.Echo.private(`user.${idUtente}`)
+        .listen('.ricarica.heartbeat', (e) => {
+            if (e.id_sessione && e.id_sessione !== sessionUuid) return;
+            kwhTotali += Number(e.cambiamento_kwh) || 0;
+            aggiornaUI(kwhTotali);
         });
+
+    // Polling fallback: chiama GET /api/session/{id} ogni 5s per sincronizzare
+    // i kWh dal DB (utile se il WS non e' affidabile).
+    setInterval(async () => {
+        try {
+            const resp = await fetch(`/api/session/${sessionUuid}`, {
+                headers: {
+                    'Authorization': 'Bearer {{ $api_token }}',
+                    'Accept': 'application/json',
+                },
+            });
+            if (!resp.ok) return;
+            const data = await resp.json();
+            if (typeof data.kwh_erogati === 'number' && data.kwh_erogati > kwhTotali) {
+                kwhTotali = data.kwh_erogati;
+                aggiornaUI(kwhTotali);
+            }
+        } catch (_) { /* ignore */ }
+    }, 5000);
+
+    // Aggiorno la durata ogni secondo
+    setInterval(() => {
+        document.getElementById('time-display').innerText = formattaDurata(Date.now() - dataInizioMs);
+    }, 1000);
+
+    function aggiornaUI(kwh) {
+        document.getElementById('kwh-display').innerText  = kwh.toFixed(2);
+        document.getElementById('cost-display').innerText = `€ ${(kwh * PREZZO_PER_KWH).toFixed(2)}`;
+        document.getElementById('progress-bar').style.width = Math.min(100, (kwh / KWH_TARGET) * 100) + '%';
+        flashUI();
+    }
+
+    function formattaDurata(ms) {
+        const sec = Math.floor(ms / 1000);
+        const m   = String(Math.floor(sec / 60)).padStart(2, '0');
+        const s   = String(sec % 60).padStart(2, '0');
+        return `${m}:${s}`;
+    }
+
+    function flashUI() {
+        const els = [
+            document.getElementById('kwh-display'),
+            document.getElementById('box-time'),
+            document.getElementById('box-cost'),
+        ];
+        els[0].classList.add('flash');
+        els[1].classList.add('flash-update');
+        els[2].classList.add('flash-update');
+        setTimeout(() => {
+            els[0].classList.remove('flash');
+            els[1].classList.remove('flash-update');
+            els[2].classList.remove('flash-update');
+        }, 700);
+    }
+
+    async function terminaRicarica() {
+        if (!confirm('Confermi di voler terminare la ricarica?')) return;
+        try {
+            const resp = await fetch(`/api/session/${sessionUuid}/stop`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': 'Bearer {{ $api_token }}',
+                    'Accept': 'application/json',
+                },
+            });
+            const data = await resp.json();
+            if (resp.ok) {
+                window.location.href = '/profilo';
+            } else {
+                alert(data.error || 'Errore durante la chiusura della sessione');
+            }
+        } catch (err) {
+            console.error(err);
+            alert('Errore di rete');
+        }
+    }
 </script>
 @endpush
 @endsection

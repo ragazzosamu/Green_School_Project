@@ -423,11 +423,139 @@
         align-items: center;
         gap: 8px;
     }
+    /* ── BANNER SESSIONE (Attesa cavo / Sessione in corso) ── */
+    .session-banner {
+        display: none;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 1.25rem 1.5rem;
+        margin-bottom: 1.5rem;
+        box-shadow: var(--shadow-sm);
+        align-items: center;
+        gap: 1.25rem;
+    }
+    .session-banner.show { display: flex; }
+    .session-banner.attesa { border-color: #F4D58D; background: #FEF8E6; }
+    .session-banner.attiva { border-color: #BBF7D0; background: #F0FDF4; }
+
+    .session-banner-icon {
+        width: 48px; height: 48px; border-radius: 12px;
+        display: flex; align-items: center; justify-content: center;
+        background: var(--surface2); font-size: 22px; flex-shrink: 0;
+    }
+    .session-banner.attesa .session-banner-icon { background: #FCEFCB; }
+    .session-banner.attiva .session-banner-icon { background: #DCFCE7; }
+
+    .session-banner-body { flex: 1; min-width: 0; }
+    .session-banner-title {
+        font-family: 'DM Sans', sans-serif;
+        font-weight: 600;
+        font-size: 0.95rem;
+        color: var(--text);
+        margin-bottom: 4px;
+    }
+    .session-banner-sub {
+        font-size: 0.8rem;
+        color: var(--text-2);
+    }
+    .session-banner-sub strong { color: var(--text); font-weight: 600; }
+    .session-banner-cta {
+        background: var(--accent);
+        color: #fff;
+        border: none;
+        border-radius: 10px;
+        padding: 9px 16px;
+        font-size: 0.82rem;
+        font-weight: 600;
+        cursor: pointer;
+        text-decoration: none;
+        white-space: nowrap;
+    }
+    .session-banner-cta:hover { background: #1f5238; }
+
+    /* Countdown nel banner di attesa */
+    .attesa-timer {
+        display: inline-flex;
+        align-items: baseline;
+        gap: 4px;
+        margin-top: 8px;
+        padding: 4px 12px;
+        background: rgba(212, 160, 23, 0.15);
+        border: 1px solid rgba(212, 160, 23, 0.35);
+        border-radius: 100px;
+    }
+    .attesa-timer-value {
+        font-family: 'DM Serif Display', Georgia, serif;
+        font-size: 1.1rem;
+        color: #8B6914;
+        line-height: 1;
+    }
+    .attesa-timer-label {
+        font-size: 0.7rem;
+        color: #8B6914;
+        font-weight: 500;
+    }
+    .attesa-progress {
+        height: 3px;
+        background: rgba(212, 160, 23, 0.2);
+        border-radius: 100px;
+        overflow: hidden;
+        margin-top: 8px;
+    }
+    .attesa-progress-bar {
+        height: 100%;
+        background: linear-gradient(90deg, #D4A017, #F4D58D);
+        width: 100%;
+        transition: width 0.9s linear;
+    }
 </style>
 
 <div class="page-header">
     <p class="page-eyebrow">Il tuo profilo</p>
     <h1 class="page-title">Gamification</h1>
+</div>
+
+{{-- Banner ricarica: stato iniziale renderizzato server-side, aggiornato live via WebSocket --}}
+@php
+    if ($sessione_attiva) {
+        $bannerStato = 'attiva';
+        $bannerIcona = '⚡';
+        $bannerTitolo = 'Sessione di ricarica in corso';
+        $bannerSub    = 'Energia erogata: <strong id="banner-kwh">' . number_format((float)($sessione_attiva->quantita_kwh ?? 0), 2) . ' kWh</strong>';
+    } elseif (!empty($attesa_punto)) {
+        $bannerStato = 'attesa';
+        $bannerIcona = '🔌';
+        $bannerTitolo = 'In attesa del cavo';
+        $bannerSub    = 'Collega il cavo alla presa per avviare la ricarica.'
+            . '<div class="attesa-timer">'
+            . '  <span class="attesa-timer-value" id="attesa-timer-value">60</span>'
+            . '  <span class="attesa-timer-label">secondi rimanenti</span>'
+            . '</div>'
+            . '<div class="attesa-progress"><div class="attesa-progress-bar" id="attesa-progress-bar" style="width:100%"></div></div>';
+    } else {
+        $bannerStato = '';
+        $bannerIcona = '';
+        $bannerTitolo = '';
+        $bannerSub    = '';
+    }
+@endphp
+
+<div id="session-banner"
+     class="session-banner {{ $bannerStato ? 'show ' . $bannerStato : '' }}"
+     data-id-punto="{{ $sessione_attiva->id_punto ?? $attesa_punto ?? '' }}"
+     data-id-sessione="{{ $sessione_attiva->id_sessione ?? '' }}">
+    <div id="session-banner-icon" class="session-banner-icon">{{ $bannerIcona }}</div>
+    <div class="session-banner-body">
+        <p id="session-banner-title" class="session-banner-title">{{ $bannerTitolo }}</p>
+        <p id="session-banner-sub"   class="session-banner-sub">{!! $bannerSub !!}</p>
+    </div>
+    <a id="session-banner-cta"
+       class="session-banner-cta"
+       href="{{ $sessione_attiva ? '/session/' . $sessione_attiva->id_sessione : '#' }}"
+       style="{{ $sessione_attiva ? '' : 'display:none;' }}">
+        Vai alla sessione →
+    </a>
 </div>
 
 {{-- Avviso dati mock — da rimuovere quando il backend è pronto --}}
@@ -614,5 +742,186 @@
 
     </div>
 </div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pusher/8.3.0/pusher.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/laravel-echo@1.16.1/dist/echo.iife.js"></script>
+
+<script>
+    // ─── Banner ricarica: WebSocket real-time ────────────────────────────
+    //
+    // Stato iniziale renderizzato server-side (PHP @php sopra). Da qui in poi
+    // tutti gli aggiornamenti arrivano via WebSocket Reverb:
+    //   - SessioneAvviata     -> banner giallo "attesa" diventa verde "attiva"
+    //   - TelemetriaRicevuta  -> aggiorna i kWh in tempo reale
+    //   - InterrompiSessione  -> (via PuntoStatusChanged) banner sparisce
+    //
+    // Niente polling, niente fallback HTTP: WS e' il canale ufficiale.
+
+    const ID_UTENTE      = @json(Auth::user()?->id_utente);
+    const ATTESA_PUNTO   = @json($attesa_punto ?? null);
+
+    const banner       = document.getElementById('session-banner');
+    const bannerIcon   = document.getElementById('session-banner-icon');
+    const bannerTitle  = document.getElementById('session-banner-title');
+    const bannerSub    = document.getElementById('session-banner-sub');
+    const bannerCta    = document.getElementById('session-banner-cta');
+
+    // Stato corrente del banner (alimentato dal server in render + dai WS)
+    let idPuntoCorrente    = banner.dataset.idPunto    || ATTESA_PUNTO || null;
+    let idSessioneCorrente = banner.dataset.idSessione || null;
+    let kwhCorrenti        = parseFloat(@json((float) ($sessione_attiva->quantita_kwh ?? 0))) || 0;
+
+    // Inizializzo Echo / Reverb. La sottoscrizione a un PrivateChannel chiama
+    // POST /broadcasting/auth: Laravel risponde solo se la sessione web e' valida
+    // E la closure in routes/channels.php restituisce true. Quindi solo l'utente
+    // loggato puo' ascoltare il proprio user.{id_utente}, anche se uno sniffer
+    // conoscesse l'id_utente non potrebbe sottoscrivere senza il cookie di sessione.
+    let echo = null;
+    try {
+        window.Pusher = Pusher;
+        // wsHost / wsPort / forceTLS calcolati dall'host della pagina:
+        //   - http://localhost      -> ws://localhost:80/app/{key}     (proxy Apache)
+        //   - https://ngrok.app     -> wss://ngrok.app:443/app/{key}   (proxy Apache, TLS via ngrok)
+        const _isHttps = window.location.protocol === 'https:';
+        echo = new Echo({
+            broadcaster: 'reverb',
+            key:    '{{ env("VITE_REVERB_APP_KEY") }}',
+            wsHost:  window.location.hostname,
+            wsPort:  _isHttps ? 443 : 80,
+            wssPort: 443,
+            forceTLS: _isHttps,
+            enabledTransports: ['ws', 'wss'],
+            authEndpoint: '/broadcasting/auth',
+            auth: {
+                headers: {
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
+                    'Accept':       'application/json',
+                },
+            },
+        });
+        window.Echo = echo;
+    } catch (err) {
+        console.error('[profilo] Echo init fallito:', err);
+    }
+
+    // Mi metto in ascolto del canale PRIVATO dell'utente: ricevero' qui
+    // sia sessione.avviata sia ricarica.heartbeat.
+    if (echo && ID_UTENTE) {
+        ascoltaUtente(ID_UTENTE);
+
+        // Race-condition safety: l'evento sessione.avviata potrebbe essere
+        // partito tra il render della pagina e il completamento del subscribe
+        // WS. Faccio UN SOLO check dopo 1.5s sull'endpoint REST per sincronizzare.
+        if (!idSessioneCorrente && idPuntoCorrente) {
+            setTimeout(syncStatoIniziale, 1500);
+        }
+    }
+
+    // Countdown 60s nel banner di attesa (solo lato visuale; il TTL reale
+    // dipende dal backend: se scade non parte la sessione).
+    let countdownInterval = null;
+    if (banner.classList.contains('attesa')) {
+        avviaCountdown(60);
+    }
+
+    function avviaCountdown(secondi) {
+        const valEl = document.getElementById('attesa-timer-value');
+        const barEl = document.getElementById('attesa-progress-bar');
+        if (!valEl) return;
+        let rimanenti = secondi;
+        valEl.textContent = rimanenti;
+        countdownInterval = setInterval(() => {
+            rimanenti -= 1;
+            valEl.textContent = Math.max(0, rimanenti);
+            if (barEl) barEl.style.width = Math.max(0, (rimanenti / secondi) * 100) + '%';
+            if (rimanenti <= 0) {
+                clearInterval(countdownInterval);
+                if (!idSessioneCorrente) {
+                    bannerTitle.textContent = 'Tempo scaduto';
+                    bannerSub.textContent   = 'Il cavo non e\' stato collegato in tempo. Riprova dalla mappa.';
+                }
+            }
+        }, 1000);
+    }
+
+    function fermaCountdown() {
+        if (countdownInterval) {
+            clearInterval(countdownInterval);
+            countdownInterval = null;
+        }
+    }
+
+    async function syncStatoIniziale() {
+        if (idSessioneCorrente) return; // gia' partita la sessione via WS
+        try {
+            const resp = await fetch('/api/me/sessione-attiva', {
+                headers: {
+                    'Authorization': 'Bearer ' + @json($api_token ?? ''),
+                    'Accept': 'application/json',
+                },
+            });
+            if (!resp.ok) return;
+            const data = await resp.json();
+            if (data.attiva && data.id_sessione) {
+                console.log('[profilo] sync iniziale: sessione gia attiva', data);
+                idSessioneCorrente = data.id_sessione;
+                kwhCorrenti        = Number(data.kwh_erogati) || 0;
+                mostraAttiva();
+            }
+        } catch (err) {
+            console.warn('[profilo] sync iniziale fallito:', err);
+        }
+    }
+
+    function ascoltaUtente(idUtente) {
+        // PRIVATE channel: Echo fara' la chiamata di auth verso /broadcasting/auth
+        const ch = echo.private('user.' + idUtente);
+
+        ch.listen('.sessione.avviata', (e) => {
+            console.log('[profilo] sessione.avviata ricevuta', e);
+            idSessioneCorrente = e.id_sessione;
+            idPuntoCorrente    = e.id_punto;
+            kwhCorrenti        = 0;
+            mostraAttiva();
+        });
+
+        ch.listen('.ricarica.heartbeat', (e) => {
+            if (idSessioneCorrente && e.id_sessione && e.id_sessione !== idSessioneCorrente) return;
+            kwhCorrenti += Number(e.cambiamento_kwh) || 0;
+            aggiornaKwhUI();
+        });
+
+        // Stato punto: questo resta su canale PUBBLICO punto.{id} perche'
+        // e' un'informazione di disponibilita' (chiunque puo' vederla).
+        if (idPuntoCorrente) {
+            echo.channel('punto.' + idPuntoCorrente).listen('.punto.status', (e) => {
+                if (e.libera === true || e.libera === 1) {
+                    nascondi();
+                }
+            });
+        }
+    }
+
+    function mostraAttiva() {
+        fermaCountdown();
+        banner.classList.remove('attesa');
+        banner.classList.add('show', 'attiva');
+        bannerIcon.textContent = '⚡';
+        bannerTitle.textContent = 'Sessione di ricarica in corso';
+        aggiornaKwhUI();
+        bannerCta.href = '/session/' + idSessioneCorrente;
+        bannerCta.style.display = 'inline-block';
+    }
+
+    function aggiornaKwhUI() {
+        bannerSub.innerHTML = 'Energia erogata: <strong>' + kwhCorrenti.toFixed(2) + ' kWh</strong>';
+    }
+
+    function nascondi() {
+        banner.classList.remove('show', 'attesa', 'attiva');
+        idSessioneCorrente = null;
+        idPuntoCorrente = null;
+    }
+</script>
 
 @endsection

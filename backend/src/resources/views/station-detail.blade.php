@@ -506,12 +506,22 @@
 
             const data = await response.json();
 
-            if (response.ok) {
-                window.location.href = '/session/' + data.session_uuid;
-            } else {
-                console.error("Dettaglio Errore:", data);
-                alert("ERRORE SERVER: " + (data.message || data.error || JSON.stringify(data)));
+            // 202 = QR validato, in attesa che l'utente colleghi il cavo.
+            // Niente overlay locale: redirigiamo subito alla pagina personale,
+            // che fa polling sulla sessione attiva dell'utente.
+            if (response.status === 202) {
+                window.location.href = '/profilo?attesa=' + encodeURIComponent(idPunto);
+                return;
             }
+
+            // Compatibilita': se l'API rispondesse subito con un session_uuid.
+            if (response.ok && data.session_uuid) {
+                window.location.href = '/session/' + data.session_uuid;
+                return;
+            }
+
+            console.error("Dettaglio Errore:", data);
+            alert("ERRORE: " + (data.message || data.error || JSON.stringify(data)));
         } catch (error) {
             console.error("Errore di rete:", error);
             alert("Errore di rete: controlla la console.");

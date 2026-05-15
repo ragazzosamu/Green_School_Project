@@ -14,8 +14,12 @@ RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
 
 RUN docker-php-ext-install pcntl
 
-# Abilitiamo mod_rewrite di Apache, necessario per le rotte di Laravel
-RUN a2enmod rewrite
+# Abilitiamo i moduli Apache necessari:
+# - rewrite        → rotte Laravel
+# - proxy          → reverse proxy generico
+# - proxy_http     → proxy verso backend HTTP
+# - proxy_wstunnel → tunnel WebSocket verso Reverb (stesso dominio del frontend)
+RUN a2enmod rewrite proxy proxy_http proxy_wstunnel
 
 # Spostiamo la DocumentRoot di Apache da /var/www/html a /var/www/html/public (cartella pubblica di Laravel)
 ENV APACHE_DOCUMENT_ROOT /var/www/html/public

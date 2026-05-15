@@ -221,7 +221,7 @@
 @push('scripts')
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pusher/8.3.0/pusher.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/laravel-echo@1.15.3/dist/echo.iife.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/laravel-echo@1.16.1/dist/echo.iife.js"></script>
 
 <script>
     const stazioniMarkersMap = {};
@@ -231,25 +231,74 @@
     const centerLng = {{ $center_lng ?? 9.1900 }};
     const zoomLevel = {{ $zoom ?? 14 }};
 
+    // Cache locale dello stato dei punti per ricalcolare il colore della stazione
+    // quando arrivano eventi punto.status / punto.hardware.status (l'API
+    // /api/stations e' chiamata solo al caricamento).
+    const stazioniDataMap = {};
+
+    function ricoloraStazione(idStazione) {
+        const marker   = stazioniMarkersMap[idStazione];
+        const stazione = stazioniDataMap[idStazione];
+        if (!marker || !stazione) return;
+        marker.setStyle({ fillColor: getStazioneColor(stazione) });
+    }
+
     try {
         window.Pusher = Pusher;
+        // wsHost / wsPort / forceTLS calcolati dall'host della pagina:
+        //   - http://localhost      -> ws://localhost:80/app/{key}     (proxy Apache)
+        //   - https://ngrok.app     -> wss://ngrok.app:443/app/{key}   (proxy Apache, TLS tramite ngrok)
+        // Cosi' lo stesso codice funziona in dev e in pubblicazione via ngrok.
+        const _isHttps = window.location.protocol === 'https:';
         window.Echo = new Echo({
             broadcaster: 'reverb',
             key: '{{ env("VITE_REVERB_APP_KEY") }}',
-            wsHost: '{{ env("VITE_REVERB_HOST") }}',
-            wsPort: {{ env("VITE_REVERB_PORT", 8080) }},
-            forceTLS: false,
+            wsHost:  window.location.hostname,
+            wsPort:  _isHttps ? 443 : 80,
+            wssPort: 443,
+            forceTLS: _isHttps,
             enabledTransports: ['ws', 'wss'],
         });
 
         const canaleMappa = window.Echo.channel('mappa');
 
+        // Stazione intera libera/occupata
         canaleMappa.listen('.stazione.status', (e) => {
-            const stazioneMarker = stazioniMarkersMap[e.id_stazione];
-            if (stazioneMarker) {
-                stazioneMarker.setStyle({
-                    fillColor: e.disponibile ? '#16A34A' : '#DC2626'
-                });
+            const stazione = stazioniDataMap[e.id_stazione];
+            if (stazione) stazione._statoStazione = e.libera;
+            ricoloraStazione(e.id_stazione);
+        });
+
+        // Cambio stato di un singolo punto (libero/occupato)
+        canaleMappa.listen('.punto.status', (e) => {
+            const stazione = e.id_stazione ? stazioniDataMap[e.id_stazione] : null;
+            if (stazione) {
+                const punto = stazione.punti_ricarica.find(p => p.id_punto === e.id_punto);
+                if (punto) {
+                    punto.libera = e.libera ? 1 : 0;
+                    ricoloraStazione(e.id_stazione);
+                }
+                return;
+            }
+            // Fallback: cerca il punto in tutte le stazioni
+            for (const idStazione in stazioniDataMap) {
+                const punto = stazioniDataMap[idStazione].punti_ricarica.find(p => p.id_punto === e.id_punto);
+                if (punto) {
+                    punto.libera = e.libera ? 1 : 0;
+                    ricoloraStazione(idStazione);
+                    return;
+                }
+            }
+        });
+
+        // Cambio stato hardware di un punto (online/offline/guasto/manutenzione)
+        canaleMappa.listen('.punto.hardware.status', (e) => {
+            const stazione = stazioniDataMap[e.id_stazione];
+            if (!stazione) return;
+            const punto = stazione.punti_ricarica.find(p => p.id_punto === e.id_punto);
+            if (punto) {
+                punto.stato_hardware = e.stato_hardware;
+                ricoloraStazione(e.id_stazione);
             }
         });
 
@@ -296,6 +345,7 @@
                 }).addTo(map);
 
                 stazioniMarkersMap[stazione.id_stazione] = marker;
+                stazioniDataMap[stazione.id_stazione]    = stazione;
 
                 const popupContent = `
                     <div class="gs-popup">

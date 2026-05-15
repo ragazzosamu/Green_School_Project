@@ -13,27 +13,27 @@ Route::post('/login', [AuthController::class, 'login']);
 
 // Tutte le rotte che richiedono il Token Sanctum
 Route::middleware('auth:sanctum')->group(function () {
-    
+
     // Recupera stazioni per la mappa
-    Route::get('/stations', [StationController::class, 'all']); 
-    
+    Route::get('/stations', [StationController::class, 'all']);
+
     // Dettaglio stazione singola
-    Route::get('/station/{id}', [StationController::class, 'show']); 
+    Route::get('/station/{id}', [StationController::class, 'show']);
 
     Route::get('/school/profile',     [SchoolController::class, 'profile']);
-    
-    Route::get('/school/consumption',  [SchoolController::class, 'consumption']);
+    Route::get('/school/consumption', [SchoolController::class, 'consumption']);
 
-    // Avvio sessione
-    Route::post('/scan-qr',[SessionController::class, 'AvvioSessione']);//utente legge qr con telecamera, avrà questo input: gs:{$idPunto}:{$firma}. quesre cose saranno da mandare come body json a questa rotta.
+    // Avvio sessione (gestisce rendez-vous QR -> cavo, finestra 60s)
+    Route::post('/scan-qr', [SessionController::class, 'AutenticazioneQr']);
 
-    // In futuro da modificare per gamification
-    Route::get('/session/{id}',[SessionController::class, 'show']);
+    // Polling: ha l'utente loggato una sessione attiva in questo momento?
+    Route::get('/me/sessione-attiva', [SessionController::class, 'SessioneAttivaUtente']);
 
+    // Dettaglio sessione singola
+    Route::get('/session/{id}',      [SessionController::class, 'show']);
     Route::post('/session/{id}/stop',[SessionController::class, 'InterrompiSessione']);
-    
+
     Route::post('/logout', [AuthController::class, 'logout']);
-      
 });
 
 // Rotte IoT (ESP32 / simulatore) — autenticate tramite X-Device-Token

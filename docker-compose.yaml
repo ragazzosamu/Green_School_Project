@@ -64,7 +64,7 @@ services:
       - "8080:8080"
     volumes:
       - ./backend/src:/var/www/html     # stesso codice
-    command: php /var/www/html/artisan reverb:start --host=0.0.0.0 --port=8080
+    command: php /var/www/html/artisan reverb:start --host=0.0.0.0 --port=8080 --debug
     networks:
       - green-network
     depends_on:
@@ -84,6 +84,23 @@ services:
       - app
       - redis
       - mqtt
+
+  mqtt-worker:
+    build: ./backend                    # stessa immagine dell'app
+    container_name: green_mqtt_worker
+    volumes:
+      - ./backend/src:/var/www/html
+    # Aspetta che 'app' abbia finito composer install prima di avviare il worker
+    command: sh -c "until [ -f /var/www/html/vendor/autoload.php ]; do sleep 2; done && php /var/www/html/artisan mqtt:leggi"
+    restart: unless-stopped
+    networks:
+      - green-network
+    depends_on:
+      - app
+      - mariadb
+      - redis
+      - mqtt
+      - reverb
 
   mqtt:
     image: eclipse-mosquitto:latest

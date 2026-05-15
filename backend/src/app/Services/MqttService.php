@@ -9,12 +9,18 @@ use Illuminate\Support\Facades\Log;
 class MqttService
 {
     /**
-     * Pubblica un messaggio (Uso: Controller o Job)
+     * Client persistente usato dal worker per le subscribe + loop.
+     * Le publish "una tantum" usano invece un client locale e si disconnettono subito.
      */
-    public function publish(string $topic, string $message)
+    private ?MqttClient $subscriberClient = null;
+
+    /**
+     * Pubblica un messaggio (Uso: Controller, Job, oppure dal worker stesso).
+     */
+    public function publish(string $topic, string $message): void
     {
         $server   = config('services.mqtt.host');
-        $port     = config('services.mqtt.port');
+        $port     = (int) config('services.mqtt.port');
         $clientId = 'laravel_pub_' . uniqid();
 
         $mqtt = new MqttClient($server, $port, $clientId);
@@ -33,30 +39,63 @@ class MqttService
     }
 
     /**
-     * Ascolta un topic (Uso: Artisan Command)
-     * Aggiunto il parametro callable $callback
+     * Registra una subscribe sul client persistente.
+     * NON avvia il loop: va chiamato loop() una sola volta dopo aver registrato
+     * tutte le sottoscrizioni.
      */
-    public function subscribe(string $topic, callable $callback)
+    public function subscribe(string $topic, callable $callback): void
     {
-        $server   = config('services.mqtt.host');
-        $port     = (int) config('services.mqtt.port'); // Assicurati sia un intero
-        $clientId = 'laravel_sub_' . uniqid();
+        $client = $this->getSubscriberClient();
 
-        $mqtt = new MqttClient($server, $port, $clientId);
-
-        $mqtt->connect();
-        
-        $this->infoLog("Connesso al broker, in ascolto su: $topic");
-
-        $mqtt->subscribe($topic, function ($topic, $message) use ($callback) {
-            // Chiamiamo la funzione passata dal Command
+        $client->subscribe($topic, function ($topic, $message) use ($callback) {
             $callback($topic, $message);
         }, 0);
+
+        $this->infoLog("In ascolto su: $topic");
     }
 
-    private function infoLog($msg) 
+    /**
+     * Avvia il loop di ricezione. Bloccante: va chiamato a fine handle() del worker.
+     */
+    public function loop(): void
     {
-        // Utile per il debug
+        $this->getSubscriberClient()->loop(true);
+    }
+
+    /**
+     * Crea (se serve) e restituisce il client condiviso per la subscribe.
+     */
+    private function getSubscriberClient(): MqttClient
+    {
+        if ($this->subscriberClient !== null && $this->subscriberClient->isConnected()) {
+            return $this->subscriberClient;
+        }
+
+        $server   = config('services.mqtt.host');
+        $port     = (int) config('services.mqtt.port');
+        $clientId = 'laravel_sub_' . uniqid();
+
+        $client = new MqttClient($server, $port, $clientId);
+
+        // Se il tuo broker richiede login, scommenta queste righe:
+        /*
+        $settings = (new ConnectionSettings)
+            ->setUsername(config('services.mqtt.user'))
+            ->setPassword(config('services.mqtt.password'))
+            ->setKeepAliveInterval(30);
+        $client->connect($settings, true);
+        */
+
+        $client->connect(null, true);
+
+        $this->subscriberClient = $client;
+        $this->infoLog("Connesso al broker $server:$port");
+
+        return $client;
+    }
+
+    private function infoLog(string $msg): void
+    {
         Log::info("[MQTT] $msg");
     }
 }
