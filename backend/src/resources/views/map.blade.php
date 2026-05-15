@@ -17,7 +17,7 @@
 
     .page-eyebrow {
         font-size: 0.7rem;
-        font-weight: 600;
+        font-weight: 600; 
         letter-spacing: 0.12em;
         text-transform: uppercase;
         color: var(--text-3);

@@ -17,6 +17,8 @@ Route::post('/login', [WebAuthController::class, 'login']);
 Route::post('/logout', [WebAuthController::class, 'logout'])->name('logout');
 Route::get('/register', [WebAuthController::class, 'showRegister'])->name('register')->middleware('guest');
 Route::post('/register', [WebAuthController::class, 'register'])->middleware('guest');
+Route::get('/classifica', fn() => view('classifica'))->name('classifica')->middleware('auth');
+Route::get('/scuola', fn() => view('scuola'))->name('scuola')->middleware('auth');
 
 // --- ROTTA DELLA MAPPA ---
 Route::get('/map', function () {

@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\StationController;
 use App\Http\Controllers\Api\SessionController;
 use App\Http\Controllers\Api\IotController;
+use App\Http\Controllers\Api\SchoolController;
 
 // Rotta pubblica per login da dispositivi esterni (Postman/Python)
 Route::post('/login', [AuthController::class, 'login']);
@@ -19,6 +20,10 @@ Route::middleware('auth:sanctum')->group(function () {
     // Dettaglio stazione singola
     Route::get('/station/{id}', [StationController::class, 'show']); 
 
+    Route::get('/school/profile',     [SchoolController::class, 'profile']);
+    
+    Route::get('/school/consumption',  [SchoolController::class, 'consumption']);
+
     // Avvio sessione
     Route::post('/scan-qr',[SessionController::class, 'AvvioSessione']);//utente legge qr con telecamera, avrà questo input: gs:{$idPunto}:{$firma}. quesre cose saranno da mandare come body json a questa rotta.
 
@@ -28,6 +33,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/session/{id}/stop',[SessionController::class, 'InterrompiSessione']);
     
     Route::post('/logout', [AuthController::class, 'logout']);
+      
 });
 
 // Rotte IoT (ESP32 / simulatore) — autenticate tramite X-Device-Token
