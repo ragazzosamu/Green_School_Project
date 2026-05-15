@@ -134,6 +134,7 @@
             transition: background 0.15s, color 0.15s;
         }
         .gs-nav-link:hover { background: var(--surface2); color: var(--text); }
+        .gs-nav-link.active { background: var(--accent-bg); color: var(--accent); }
 
         .gs-logout-btn {
             font-size: 0.8rem;
@@ -162,7 +163,11 @@
             @auth
                 <span class="gs-nav-user">{{ Auth::user()->nome }}</span>
                 <div class="gs-nav-divider"></div>
-                <a href="/map" class="gs-nav-link">Mappa</a>
+                <a href="/map"         class="gs-nav-link {{ request()->is('map') ? 'active' : '' }}">Mappa</a>
+                <a href="/profilo"     class="gs-nav-link {{ request()->is('profilo') ? 'active' : '' }}">Profilo</a>
+                <a href="/classifica"  class="gs-nav-link {{ request()->is('classifica') ? 'active' : '' }}">Classifica</a>
+                <a href="/scuola"      class="gs-nav-link {{ request()->is('scuola') ? 'active' : '' }}">Scuola</a>
+                <div class="gs-nav-divider"></div>
                 <form action="{{ route('logout') }}" method="POST" style="display:inline;">
                     @csrf
                     <button type="submit" class="gs-logout-btn">Esci</button>

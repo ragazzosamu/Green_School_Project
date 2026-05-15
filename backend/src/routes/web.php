@@ -60,3 +60,8 @@ Route::get('/session/{uuid}', function ($uuid) {
         'session_uuid' => $uuid
     ]);
 })->name('session.active')->middleware('auth');
+
+Route::get('/profilo', function () {
+    return view('gamification-profile');
+})->name('profilo')->middleware('auth');
+ 
