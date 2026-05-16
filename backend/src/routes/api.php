@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\StationController;
 use App\Http\Controllers\Api\SessionController;
 use App\Http\Controllers\Api\IotController;
 use App\Http\Controllers\Api\SchoolController;
+use App\Http\Controllers\Api\GamificationController;
 
 // Rotta pubblica per login da dispositivi esterni (Postman/Python)
 Route::post('/login', [AuthController::class, 'login']);
@@ -22,6 +23,11 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('/school/profile',     [SchoolController::class, 'profile']);
     Route::get('/school/consumption', [SchoolController::class, 'consumption']);
+
+    Route::get('/gamification/profile',     [GamificationController::class, 'profile']);
+    Route::get('/gamification/badges',      [GamificationController::class, 'badges']);
+    Route::get('/gamification/leaderboard', [GamificationController::class, 'leaderboard']);
+    Route::get('/gamification/sessioni',    [GamificationController::class, 'sessioni']);
 
     // Avvio sessione (gestisce rendez-vous QR -> cavo, finestra 60s)
     Route::post('/scan-qr', [SessionController::class, 'AutenticazioneQr']);

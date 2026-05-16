@@ -29,7 +29,7 @@ class UtentiFactory extends Factory
             'nome'            => fake()->firstName(),
             'cognome'         => fake()->lastName(),
             'tipo_account'    => 'completo',
-            'attivo'          => true,
+            'attivo'          =>  true,
             'data_registrazione' => now(),
         ];
     }
