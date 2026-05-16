@@ -522,7 +522,7 @@
         $bannerStato = 'attiva';
         $bannerIcona = '⚡';
         $bannerTitolo = 'Sessione di ricarica in corso';
-        $bannerSub    = 'Energia erogata: <strong id="banner-kwh">' . number_format((float)($sessione_attiva->quantita_kwh ?? 0), 2) . ' kWh</strong>';
+        $bannerSub    = 'Energia erogata: <strong id="banner-kwh">' . number_format((float)($kwh_attuali ?? 0), 2) . ' kWh</strong>';
     } elseif (!empty($attesa_punto)) {
         $bannerStato = 'attesa';
         $bannerIcona = '🔌';
@@ -769,7 +769,7 @@
     // Stato corrente del banner (alimentato dal server in render + dai WS)
     let idPuntoCorrente    = banner.dataset.idPunto    || ATTESA_PUNTO || null;
     let idSessioneCorrente = banner.dataset.idSessione || null;
-    let kwhCorrenti        = parseFloat(@json((float) ($sessione_attiva->quantita_kwh ?? 0))) || 0;
+    let kwhCorrenti        = parseFloat(@json((float) ($kwh_attuali ?? 0))) || 0;
 
     // Inizializzo Echo / Reverb. La sottoscrizione a un PrivateChannel chiama
     // POST /broadcasting/auth: Laravel risponde solo se la sessione web e' valida

@@ -100,6 +100,10 @@ class SessioneService
             }
         }
 
+        // Pulisco la chiave Redis dei kWh: la sessione e' chiusa, il totale
+        // definitivo e' adesso su DB (quantita_kwh impostato da sp_termina_sessione).
+        $this->pulisciKwh($idSessione);
+
         return ['ok' => true, 'costo' => (float) $result->costo];
     }
 
@@ -133,6 +137,46 @@ class SessioneService
     public function pulisciStatoRendezVous(string $idPunto): void
     {
         Cache::forget(self::qrPendingKey($idPunto));
+    }
+
+    // ---- kWh corrente della sessione (cache Redis) -------------------------
+    //
+    // Durante la ricarica il DB resta a quantita_kwh=0 fino alla chiusura
+    // (sp_termina_sessione). Per non perdere lo stato quando l'utente naviga
+    // tra le pagine, accumuliamo i delta in Redis. Il valore corrente e' la
+    // somma di tutti i delta arrivati dal worker MQTT.
+
+    public const TTL_KWH_SESSIONE = 86400; // 24h: una sessione realistica e' molto piu' breve
+
+    public static function kwhSessioneKey(string $idSessione): string
+    {
+        return "sessione_kwh:{$idSessione}";
+    }
+
+    /**
+     * Somma un delta al totale corrente della sessione e restituisce il nuovo
+     * totale. Chiamato dal worker a ogni telemetria.
+     */
+    public function aggiungiKwh(string $idSessione, float $delta): float
+    {
+        $key    = self::kwhSessioneKey($idSessione);
+        $totale = ((float) Cache::get($key, 0.0)) + $delta;
+        Cache::put($key, $totale, self::TTL_KWH_SESSIONE);
+        return $totale;
+    }
+
+    /**
+     * Legge il totale corrente della sessione (0 se non c'e' ancora telemetria).
+     * Chiamato dal controller / dalle view per inizializzare il display.
+     */
+    public function kwhCorrenti(string $idSessione): float
+    {
+        return (float) Cache::get(self::kwhSessioneKey($idSessione), 0.0);
+    }
+
+    public function pulisciKwh(string $idSessione): void
+    {
+        Cache::forget(self::kwhSessioneKey($idSessione));
     }
 
     /**

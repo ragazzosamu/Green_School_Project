@@ -111,7 +111,9 @@ class SessionController extends Controller
             return response()->json(['error' => 'Non autorizzato a interrompere questa sessione'], 403);
         }
 
-        $kwh = (float) ($sessione->quantita_kwh ?? 0);
+        // I kWh totali della sessione in corso vivono in Redis (il DB resta a 0
+        // finche' sp_termina_sessione non scrive il valore finale).
+        $kwh = $this->sessioni->kwhCorrenti($sessione->id_sessione);
         $esito = $this->sessioni->termina($sessione->id_sessione, $kwh);
 
         if (! $esito['ok']) {
@@ -144,8 +146,15 @@ class SessionController extends Controller
         $sessione       = Sessioni_ricarica::findOrFail($id_sessione);
         $tempoTrascorso = now()->diffInMinutes($sessione->data_inizio);
 
+        // Per le sessioni ATTIVE i kWh stanno in Redis (DB e' 0 fino alla
+        // chiusura). Per le sessioni CHIUSE Redis e' stato pulito e il valore
+        // definitivo e' su DB.
+        $kwh = $sessione->data_fine === null
+            ? $this->sessioni->kwhCorrenti($sessione->id_sessione)
+            : (float) ($sessione->quantita_kwh ?? 0);
+
         return response()->json([
-            'kwh_erogati'     => $sessione->quantita_kwh,
+            'kwh_erogati'     => $kwh,
             'tempo_trascorso' => $tempoTrascorso,
         ]);
     }
@@ -172,7 +181,8 @@ class SessionController extends Controller
             'attiva'      => true,
             'id_sessione' => $sessione->id_sessione,
             'id_punto'    => $sessione->id_punto,
-            'kwh_erogati' => (float) ($sessione->quantita_kwh ?? 0),
+            // Letto da Redis: rispecchia lo stato vero in tempo reale, non lo 0 del DB
+            'kwh_erogati' => $this->sessioni->kwhCorrenti($sessione->id_sessione),
             'data_inizio' => $sessione->data_inizio,
         ], 200);
     }

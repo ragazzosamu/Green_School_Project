@@ -85,6 +85,20 @@ services:
       - redis
       - mqtt
 
+  heartbeat_checker:
+    build: ./backend
+    container_name: green_heartbeat_checker
+    volumes:
+      - ./backend/src:/var/www/html
+    command: php /var/www/html/artisan app:heartbeat-checker
+    restart: unless-stopped
+    networks:
+      - green-network
+    depends_on:
+      - app
+      - mariadb
+      - redis
+      - reverb
   mqtt-worker:
     build: ./backend                    # stessa immagine dell'app
     container_name: green_mqtt_worker

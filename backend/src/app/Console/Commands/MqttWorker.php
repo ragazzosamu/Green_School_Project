@@ -61,32 +61,52 @@ class MqttWorker extends Command
         return self::SUCCESS;
     }
 
+    /**
+     * Riceve telemetria grezza dal simulatore (V, I, intervallo) e:
+     *  1. calcola il delta kWh: (V * I / 1000) * (intervallo / 3600)
+     *  2. accumula il totale corrente in Redis (Cache::put su chiave
+     *     sessione_kwh:{id}). Cosi' se l'utente fa refresh / cambia pagina
+     *     ritrova il valore esatto. Il DB resta a 0 finche' la sessione non
+     *     viene chiusa (sp_termina_sessione scrive il totale finale).
+     *  3. dispatcha TelemetriaRicevuta per l'aggiornamento live del browser.
+     */
     private function gestisciTelemetria(string $idPunto, array $data): void
     {
-        $this->info("-> Telemetria ricevuta da punto $idPunto");
+        $idSessione = $data['id_sessione']    ?? null;
+        $voltaggio  = (float) ($data['voltaggio']      ?? 0);
+        $corrente   = (float) ($data['corrente']       ?? 0);
+        $intervallo = (float) ($data['intervallo_sec'] ?? 0);
 
-        $idSessione = $data['id_sessione'] ?? null;
-
-        // Per spedire l'evento sul canale privato dell'utente proprietario
-        // della sessione dobbiamo conoscere il suo id. Una query veloce.
-        $idUtente = null;
-        if ($idSessione) {
-            $idUtente = DB::table('sessioni_ricarica')
-                ->where('id_sessione', $idSessione)
-                ->value('id_utente');
+        if (! $idSessione || $intervallo <= 0) {
+            $this->comment("Telemetria scartata: dati insufficienti ($idSessione, V=$voltaggio, I=$corrente, Δt=$intervallo)");
+            return;
         }
+
+        // Formula classica: kWh = potenza(kW) * tempo(h)
+        //   potenza_kw = V * I / 1000
+        //   tempo_h    = intervallo / 3600
+        $deltaKwh = ($voltaggio * $corrente / 1000.0) * ($intervallo / 3600.0);
+
+        // Lookup utente per indirizzare l'evento sul canale privato corretto
+        $idUtente = DB::table('sessioni_ricarica')
+            ->where('id_sessione', $idSessione)
+            ->value('id_utente');
 
         if (! $idUtente) {
             $this->comment("Telemetria scartata: nessun id_utente per sessione $idSessione");
             return;
         }
 
-        TelemetriaRicevuta::dispatch(
-            $idPunto,
-            $data['delta_kwh'] ?? 0,
-            $idSessione,
-            $idUtente,
-        );
+        // Accumulo su Redis: read-modify-write. Il worker e' l'unico writer
+        // di questa chiave, quindi non serve un lock.
+        $totaleAggiornato = $this->sessioni->aggiungiKwh($idSessione, $deltaKwh);
+
+        $this->info(sprintf(
+            '-> Telemetria %s: V=%.1fV I=%.2fA Δt=%.0fs Δkwh=%.4f totale=%.4f',
+            $idPunto, $voltaggio, $corrente, $intervallo, $deltaKwh, $totaleAggiornato
+        ));
+
+        TelemetriaRicevuta::dispatch($idPunto, $deltaKwh, $idSessione, $idUtente);
     }
 
     private function gestisciHeartbeat(string $idPunto, array $data): void

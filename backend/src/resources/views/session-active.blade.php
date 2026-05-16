@@ -113,36 +113,6 @@
         margin-bottom: 6px;
     }
 
-    /* Progress */
-    .progress-track {
-        height: 6px;
-        background: #E8E6E0;
-        border-radius: 100px;
-        overflow: visible;
-        position: relative;
-    }
-
-    #progress-bar {
-        height: 100%;
-        border-radius: 100px;
-        background: linear-gradient(90deg, #16A34A, #22C55E);
-        transition: width 0.9s cubic-bezier(0.25,1,0.5,1);
-        position: relative;
-        min-width: 0;
-    }
-
-    #progress-bar::after {
-        content: '';
-        position: absolute;
-        right: -4px; top: 50%;
-        transform: translateY(-50%);
-        width: 12px; height: 12px;
-        border-radius: 50%;
-        background: #16A34A;
-        border: 2px solid white;
-        box-shadow: 0 1px 4px rgba(22,163,74,0.4);
-    }
-
     /* Stats */
     .stats-section {
         padding: 1.5rem 2rem;
@@ -229,9 +199,6 @@
                 <span id="kwh-display" class="kwh-number">0.00</span>
                 <span class="kwh-unit">kWh</span>
             </div>
-            <div class="progress-track">
-                <div id="progress-bar" style="width: 0%"></div>
-            </div>
         </div>
 
         <!-- Stats -->
@@ -290,7 +257,6 @@
     const idUtente        = "{{ Auth::user()->id_utente }}";
     const dataInizioMs    = Date.now();
     const PREZZO_PER_KWH  = 0.50; // fallback per costo parziale
-    const KWH_TARGET      = 50;   // per barra di progresso
 
     let kwhTotali = {{ $kwh_iniziali ?? 0 }};
     aggiornaUI(kwhTotali);
@@ -304,25 +270,6 @@
             aggiornaUI(kwhTotali);
         });
 
-    // Polling fallback: chiama GET /api/session/{id} ogni 5s per sincronizzare
-    // i kWh dal DB (utile se il WS non e' affidabile).
-    setInterval(async () => {
-        try {
-            const resp = await fetch(`/api/session/${sessionUuid}`, {
-                headers: {
-                    'Authorization': 'Bearer {{ $api_token }}',
-                    'Accept': 'application/json',
-                },
-            });
-            if (!resp.ok) return;
-            const data = await resp.json();
-            if (typeof data.kwh_erogati === 'number' && data.kwh_erogati > kwhTotali) {
-                kwhTotali = data.kwh_erogati;
-                aggiornaUI(kwhTotali);
-            }
-        } catch (_) { /* ignore */ }
-    }, 5000);
-
     // Aggiorno la durata ogni secondo
     setInterval(() => {
         document.getElementById('time-display').innerText = formattaDurata(Date.now() - dataInizioMs);
@@ -331,7 +278,6 @@
     function aggiornaUI(kwh) {
         document.getElementById('kwh-display').innerText  = kwh.toFixed(2);
         document.getElementById('cost-display').innerText = `€ ${(kwh * PREZZO_PER_KWH).toFixed(2)}`;
-        document.getElementById('progress-bar').style.width = Math.min(100, (kwh / KWH_TARGET) * 100) + '%';
         flashUI();
     }
 

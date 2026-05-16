@@ -21,7 +21,8 @@ class Stato(Enum):
 class Punto_ricarica:
     """
     Gestisce lo stato fisico e la logica di ricarica del singolo connettore.
-    Invia i delta kWh ogni 5s tramite MQTT.
+    Pubblica V, I e intervallo ogni 5s tramite MQTT: il calcolo del delta kWh
+    e' compito del worker lato backend (vedi MqttWorker::gestisciTelemetria).
     """
 
     def __init__(self, id_punto: str, stazione: 'Stazione'):
@@ -30,7 +31,10 @@ class Punto_ricarica:
         self.stato = Stato.LIBERA
         self.cavo_connesso = False
         self.sessione_attuale: Optional[Sessione] = None
-        self.delta_kwh_accumulato = 0.0
+        # Stato elettrico istantaneo, aggiornato da _loop_kwh ogni secondo e
+        # letto da _loop_telemetria per pubblicare i valori "freschi".
+        self.voltaggio_attuale: float = 0.0
+        self.corrente_attuale: float = 0.0
         self._lock = threading.Lock()
 
     def log(self, tag, messaggio):
@@ -146,54 +150,63 @@ class Punto_ricarica:
         return i_reale, potenza_kw
 
     def _loop_kwh(self, corrente_max, voltaggio, batteria_attuale):
+        """
+        Loop interno per la simulazione fisica della ricarica.
+        Ogni secondo aggiorna SoC e corrente reale (applicando la curva di carica).
+        Espone V e I correnti tramite self.voltaggio_attuale / self.corrente_attuale
+        cosi' _loop_telemetria li puo' pubblicare.
+        """
         capacita_batteria_kwh = 75.0
- 
+
         while self.sessione_attuale and self.sessione_attuale.ora_fine is None:
             if not self.cavo_connesso:
                 self.log("SISTEMA", "Cavo non più connesso → stop loop kWh.")
                 self.termina_sessione(notifica_backend=True)
                 break
- 
-            _, potenza_erogata = self.calcola_output_ricarica(voltaggio, corrente_max, batteria_attuale)
- 
+
+            i_reale, potenza_erogata = self.calcola_output_ricarica(voltaggio, corrente_max, batteria_attuale)
+
+            # Aggiorno lo stato elettrico istantaneo (sara' letto da _loop_telemetria)
+            self.voltaggio_attuale = voltaggio
+            self.corrente_attuale  = i_reale
+
+            # SoC interna alla simulazione (solo per la curva, non viene mandata)
             delta_kwh = potenza_erogata / 3600
             batteria_attuale = min(batteria_attuale + (delta_kwh / capacita_batteria_kwh), 1.0)
- 
             self.sessione_attuale.quantita_kwh += delta_kwh
-            self.delta_kwh_accumulato          += delta_kwh
- 
+
             self.log("ENERGY",
-                     f"SoC: {batteria_attuale:>6.2%} | P: {potenza_erogata:>5.2f}kW | "
-                     f"Tot: {self.sessione_attuale.quantita_kwh:.4f}kWh")
- 
-            # Da capire se possibile farlo se no togliere
-            if batteria_attuale >= 1.0 :
+                     f"SoC: {batteria_attuale:>6.2%} | V: {voltaggio:.0f}V I: {i_reale:>5.2f}A "
+                     f"P: {potenza_erogata:>5.2f}kW")
+
+            if batteria_attuale >= 1.0:
                 self.log("SISTEMA", "Batteria carica al 100%.")
- 
-                self.termina_sessione(notifica_backend=True, evento = "batteria_piena")
+                self.termina_sessione(notifica_backend=True, evento="batteria_piena")
                 break
- 
+
             time.sleep(1)
 
     def _loop_telemetria(self):
-        """Invia il delta kWh ogni METER_INTERVAL (5s) a MQTT."""
+        """
+        Invia ogni METER_INTERVAL secondi i valori grezzi al backend:
+            voltaggio, corrente_reale (dopo la curva), intervallo.
+        Il calcolo del delta kWh lo fa il worker Laravel.
+        """
         while True:
             time.sleep(config.METER_INTERVAL)
-            
+
             with self._lock:
                 if not self.sessione_attuale:
                     break
-                
-                delta = self.delta_kwh_accumulato
-                self.delta_kwh_accumulato = 0.0
                 id_sess = self.sessione_attuale.id_sessione
+                v = self.voltaggio_attuale
+                i = self.corrente_attuale
 
-
-            # 2. Pubblicazione telemetria via MQTT
-            self.stazione.pubblica(f"stazione/{self.id_punto}/telemetria", 
-            {
-                "id_sessione": id_sess,
-                "delta_kwh": delta,
+            self.stazione.pubblica(f"stazione/{self.id_punto}/telemetria", {
+                "id_sessione":    id_sess,
+                "voltaggio":      v,
+                "corrente":       i,
+                "intervallo_sec": config.METER_INTERVAL,
             })
 
 # ===========================================================================

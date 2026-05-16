@@ -60,10 +60,15 @@ Route::get('/stazione/{id}', function (string $id, Request $request) {
 Route::get('/session/{uuid}', function ($uuid) {
     $sessione = \App\Models\Sessioni_ricarica::findOrFail($uuid);
 
+    // Per le sessioni ATTIVE leggo kWh da Redis; per quelle CHIUSE da DB.
+    $kwhIniziali = $sessione->data_fine === null
+        ? app(\App\Services\SessioneService::class)->kwhCorrenti($sessione->id_sessione)
+        : (float) ($sessione->quantita_kwh ?? 0);
+
     return view('session-active', [
         'session_uuid' => $sessione->id_sessione,
         'id_punto'     => $sessione->id_punto,
-        'kwh_iniziali' => (float) ($sessione->quantita_kwh ?? 0),
+        'kwh_iniziali' => $kwhIniziali,
         'api_token'    => session('api_token'),
     ]);
 })->name('session.active')->middleware('auth');
@@ -79,10 +84,16 @@ Route::get('/profilo', function (Request $request) {
         ->orderByDesc('data_inizio')
         ->first();
 
+    // kWh correnti: in Redis se la sessione e' attiva, 0 altrimenti
+    $kwhAttuali = $sessioneAttiva
+        ? app(\App\Services\SessioneService::class)->kwhCorrenti($sessioneAttiva->id_sessione)
+        : 0.0;
+
     return view('gamification-profile', [
         'api_token'       => session('api_token'),
         // ?attesa=<id_punto> arriva da /stazione/{id} dopo scan QR riuscito.
         'attesa_punto'    => $request->query('attesa'),
         'sessione_attiva' => $sessioneAttiva,
+        'kwh_attuali'     => $kwhAttuali,
     ]);
 })->name('profilo')->middleware('auth');

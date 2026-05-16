@@ -10,15 +10,17 @@ consumi e gamification.
 
 Il progetto gira interamente in **Docker**. I servizi che compongono lo stack:
 
-| Servizio   | Container            | Ruolo                                                              |
-|------------|----------------------|--------------------------------------------------------------------|
-| `app`      | `green_app`          | Backend **Laravel** (API REST + sito web). Porta `80`              |
-| `mariadb`  | `green_db`           | Database **MariaDB**. Porta `3306`                                 |
-| `redis`    | `green_redis`        | Cache, code e sessioni                                             |
-| `queue`    | `green_queue`        | Worker Laravel per i job in coda                                   |
-| `mqtt`     | `green_mqqt-broker`  | Broker **Mosquitto**: canale di comunicazione con le colonnine. Porte `1883` (MQTT) e `9001` (WebSocket) |
-| `reverb`   | `green_reverb`       | WebSocket per il browser (in via di sostituzione con MQTT)          |
-| `python`   | `green_simulatore`   | **Simulatore** delle colonnine di ricarica (vedi `simulatore/`)    |
+| Servizio             | Container                    | Ruolo                                                              |
+|----------------------|------------------------------|--------------------------------------------------------------------|
+| `app`                | `green_app`                  | Backend **Laravel** (API REST + sito web). Porta `80`              |
+| `mariadb`            | `green_db`                   | Database **MariaDB**. Porta `3306`                                 |
+| `redis`              | `green_redis`                | Cache, code, sessioni e kWh in tempo reale                         |
+| `queue`              | `green_queue`                | Worker Laravel per i job in coda                                   |
+| `mqtt`               | `green_mqtt-broker`          | Broker **Mosquitto**: comunicazione colonnine ↔ backend. Porte `1883` (MQTT) e `9001` (MQTT su WebSocket) |
+| `mqtt-worker`        | `green_mqtt_worker`          | Worker che consuma i messaggi MQTT (telemetria, heartbeat, eventi) e dispatcha eventi Laravel |
+| `heartbeat_checker`  | `green_heartbeat_checker`    | Watchdog: marca offline i punti che non mandano heartbeat da oltre 3 minuti |
+| `reverb`             | `green_reverb`               | Server **WebSocket** verso il browser (broadcast eventi real-time). Porta `8080`, complementare a MQTT |
+| `python`             | `green_simulatore`           | **Simulatore** delle colonnine di ricarica (vedi `simulatore/`)    |
 
 ```
    Browser ──HTTP──► app (Laravel) ──► MariaDB / Redis
@@ -85,16 +87,143 @@ docker exec -it green_app php artisan migrate:fresh --seed
 
 ## 🌐 Punti di accesso
 
-| Cosa             | Indirizzo                                  |
-|------------------|--------------------------------------------|
-| Sito web         | [http://localhost](http://localhost)       |
-| API              | `http://localhost/api`                     |
-| Broker MQTT      | `localhost:1883`                           |
-| MQTT su WebSocket| `localhost:9001`                           |
+| Cosa              | Indirizzo                                  |
+|-------------------|--------------------------------------------|
+| Sito web          | [http://localhost](http://localhost)       |
+| API               | `http://localhost/api`                     |
+| Broker MQTT       | `localhost:1883`                           |
+| MQTT su WebSocket | `localhost:9001`                           |
+| WebSocket Reverb  | `localhost:8080` (di solito acceduto via Apache proxy, non direttamente) |
 
 **Connessione DBeaver:**
 - Tipo: `MySQL` · Host: `localhost` · Porta: `3306`
 - Database: `db_green_school` · Username: `admin` · Password: `password`
+
+---
+
+## 🌍 Esporre il progetto via ngrok (demo da telefono o da remoto)
+
+Per provare l'app da telefono o farla vedere a distanza serve un tunnel HTTPS verso il
+tuo `localhost`. Usiamo **ngrok**: una sola porta esposta (la `80`), tutto il resto
+(WebSocket Reverb compreso) passa attraverso Apache che fa da reverse proxy. Vedi anche
+[ADR — Apache come reverse proxy WebSocket](docs/decisioni/2026-05-15-apache-reverse-proxy-websocket.md).
+
+### Prerequisiti
+
+1. Account gratuito su [ngrok.com](https://ngrok.com/) e [scarica il client](https://ngrok.com/download).
+2. Una tantum, autentica il tuo ngrok con il token che ti dà il sito:
+   ```bash
+   ngrok config add-authtoken <il-tuo-token>
+   ```
+
+### Avvio del tunnel
+
+I container devono essere già su (`docker-compose up -d`). Poi in un terminale:
+
+```bash
+ngrok http 80
+```
+
+ngrok stampa un URL pubblico tipo:
+```
+Forwarding   https://botch-survival-repaying.ngrok-free.dev -> http://localhost:80
+```
+
+Quello è l'indirizzo da aprire dal telefono o da condividere. Funzionano:
+- Sito web (`/login`, `/map`, `/profilo`, ecc.)
+- API (`/api/...`)
+- WebSocket per gli aggiornamenti in tempo reale (passa sullo stesso URL, path `/app/`)
+
+### Cose da sapere
+
+- **L'URL cambia ogni volta** che riavvii `ngrok` (sul piano free). Se devi distribuirlo,
+  ripassalo a chi serve dopo ogni riavvio.
+- **Il login da remoto** funziona perché il backend si fida dei proxy esterni
+  (`trustProxies` in `bootstrap/app.php`) e legge `X-Forwarded-Proto: https` per gestire
+  i cookie in modo coerente.
+- **Il WebSocket** non richiede configurazione aggiuntiva: il JavaScript delle viste
+  legge l'host della pagina dinamicamente (`window.location.hostname`) e Apache fa il
+  tunneling verso Reverb via `mod_proxy_wstunnel`.
+- **`ngrok free` permette un solo tunnel**: non serve aprirne uno separato per la porta
+  `8080` di Reverb, è proprio il punto del reverse proxy.
+
+---
+
+## 🔋 Avviare una ricarica end-to-end (flusso operativo)
+
+Tutorial passo-passo per provare l'intero flusso di una ricarica, dall'utente che apre
+l'app fino alla sessione che parte. Funziona identico da **localhost** (PC) o da
+**ngrok** (telefono/remoto): cambia solo l'URL che apri.
+
+### 1. Apri il sito e fai login
+
+Vai su [http://localhost](http://localhost) (oppure sull'URL ngrok se vuoi provare da
+telefono). Schermata di login.
+
+Usa l'utente di test creato dai seeder:
+- **Email**: `test.test@email.it`
+- **Password**: `password123`
+
+> 💡 Se l'utente non esiste, hai saltato il `php artisan migrate:fresh --seed` allo step
+> 5 dell'avvio. Rilancialo.
+
+### 2. Mappa: stazioni offline
+
+Appena loggato vai su `/map`. **All'inizio tutte le stazioni sono grigie** (offline)
+perché il `heartbeat_checker` non riceve segnali dal mondo fisico e le marca come
+"non raggiungibili". Serve "accendere" almeno una colonnina simulata.
+
+### 3. Avvia il simulatore colonnine
+
+Apri un terminale separato e entra nel container del simulatore:
+
+```bash
+docker compose exec python bash
+python3 main.py
+```
+
+Da subito il simulatore inizia a inviare heartbeat MQTT verso il backend. Entro circa
+**30 secondi** la stazione passa da grigia a verde sulla mappa (in tempo reale, via
+WebSocket).
+
+### 4. Genera i QR code delle prese
+
+Una tantum, prepara tutti i QR code (uno per ogni punto di ricarica censito):
+
+```bash
+docker compose exec app php artisan app:genera-tutti
+```
+
+I file SVG escono in `backend/src/storage/app/private/public/qrcodes/`. Ti servirà
+quello del **punto specifico** che proverai a usare nello step 6.
+
+### 5. Avvia la sessione lato utente
+
+Dal sito:
+1. Click sul pallino verde della stazione → "Vai al dettaglio →"
+2. Scegli una presa libera → click su "Scegli →"
+3. La fotocamera si apre. **Inquadra il QR** del punto generato allo step 4 (puoi
+   puntare la fotocamera direttamente allo schermo dove visualizzi il SVG)
+4. Vieni rediretto su `/profilo` con un banner giallo **"In attesa del cavo"** e un
+   countdown di 60 secondi
+
+### 6. Simula il collegamento del cavo
+
+Torna al terminale del simulatore (quello dello step 3). Vedrai un menu interattivo:
+1. Premi il **numero del punto** corrispondente al QR scansionato → entri nel sotto-menu
+2. Premi **`1`** → "Collega cavo"
+
+Il simulatore pubblica `cavo_collegato` su MQTT. Il worker MQTT del backend lo riceve,
+crea la sessione su DB, dispatcha l'evento `SessioneAvviata` via WebSocket.
+
+### 7. La ricarica è partita
+
+Sul sito il banner diventa **verde** "Sessione in corso" e i kWh iniziano a salire
+ogni 5 secondi (telemetria pubblicata dal simulatore). Click su "Vai alla sessione →"
+per vedere il dettaglio.
+
+Per terminare: nel sito click su "Termina ricarica", oppure nel simulatore scollega
+il cavo (opzione `2`) o termina manualmente (opzione `5`).
 
 ---
 
@@ -194,7 +323,7 @@ che il volume non tocca.
 ### Ispezionare MQTT
 ```bash
 # Vede tutti i messaggi che passano sul broker
-docker exec -it green_mqqt-broker mosquitto_sub -t 'stazione/#' -v
+docker exec -it green_mqtt-broker mosquitto_sub -t 'stazione/#' -v
 ```
 Oppure usa **MQTT Explorer** connettendoti a `localhost:1883`.
 
