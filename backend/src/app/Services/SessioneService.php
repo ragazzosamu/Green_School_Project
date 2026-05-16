@@ -6,6 +6,7 @@ use App\Events\PuntoStatusChanged;
 use App\Events\SessioneAvviata;
 use App\Events\StazioneStatusChanged;
 use App\Models\Punti_ricarica;
+use App\Services\GamificationService;
 use App\Models\Stazioni;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -22,7 +23,7 @@ use Illuminate\Support\Facades\Log;
  */
 class SessioneService
 {
-    public function __construct(private readonly MqttService $mqtt)
+    public function __construct(private readonly MqttService $mqtt, private readonly GamificationService $gamification)
     {
     }
 
@@ -88,9 +89,9 @@ class SessioneService
         $row = DB::table('sessioni_ricarica as s')
             ->join('punti_ricarica as p', 'p.id_punto', '=', 's.id_punto')
             ->where('s.id_sessione', $idSessione)
-            ->selectRaw('s.id_punto, p.id_stazione')
+            ->selectRaw('s.id_utente, s.id_punto, p.id_stazione')
             ->first();
-
+            $this->gamification->aggiorna($idSessione, $row->id_utente, $kwhTotali);
         if ($row) {
             PuntoStatusChanged::dispatch($row->id_punto, true, $row->id_stazione);
 

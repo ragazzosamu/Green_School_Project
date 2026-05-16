@@ -25,7 +25,7 @@ class Punti_ricaricaFactory extends Factory
         'tipo_veicolo' => fake()->randomElement(['bici', 'monopattino']),
         'tipo_connettore' => 'Schuko',
         'potenza_max_kw' => fake()->randomFloat(2, 0.5, 1.5),
-        'stato_hardware' => 'online',
+        'stato_hardware' => 'offline',
         'data_ultimo_heartbeat' => now(), // Heartbeat "vivo"
         'tariffa_predefinita' => 0.00,
         'metodi_autenticazione_supportati' => 'QR_CODE, RFID',
