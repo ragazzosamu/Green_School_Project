@@ -3,7 +3,7 @@
 @section('content')
 
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600&display=swap');
+    /* Font già caricati in layouts/app.blade.php — @import rimosso */
 
     :root {
         --bg:        #F7F6F2;
@@ -231,9 +231,6 @@
 
 <script>
     window.Pusher = Pusher;
-    // wsHost / wsPort / forceTLS calcolati dall'host della pagina:
-    //   - http://localhost      -> ws://localhost:80/app/{key}    (proxy Apache)
-    //   - https://ngrok.app     -> wss://ngrok.app:443/app/{key}  (TLS via ngrok)
     const _isHttps = window.location.protocol === 'https:';
     window.Echo = new Echo({
         broadcaster: 'reverb',
@@ -252,17 +249,29 @@
         },
     });
 
-    const sessionUuid     = "{{ $session_uuid }}";
-    const idPunto         = "{{ $id_punto }}";
-    const idUtente        = "{{ Auth::user()->id_utente }}";
-    const dataInizioMs    = Date.now();
-    const PREZZO_PER_KWH  = 0.50; // fallback per costo parziale
+    const sessionUuid    = "{{ $session_uuid }}";
+    const idPunto        = "{{ $id_punto }}";
+    const idUtente       = "{{ Auth::user()->id_utente }}";
+    const PREZZO_PER_KWH = 0.50;
+
+    // ── Timer persistente ────────────────────────────────────────────────────
+    // Problema originale: dataInizioMs = Date.now() → ogni volta che l'utente
+    // naviga su un'altra pagina e torna, il timer riparte da 00:00.
+    // Fix: salviamo il timestamp di inizio in sessionStorage la prima volta,
+    // così al ritorno calcoliamo il tempo reale trascorso.
+    const SK_SESSION_START = 'gs_session_start_' + sessionUuid;
+
+    if (!sessionStorage.getItem(SK_SESSION_START)) {
+        // Prima volta che apriamo questa pagina di sessione: salvo ora
+        sessionStorage.setItem(SK_SESSION_START, Date.now().toString());
+    }
+
+    const dataInizioMs = parseInt(sessionStorage.getItem(SK_SESSION_START), 10);
+    // ────────────────────────────────────────────────────────────────────────
 
     let kwhTotali = {{ $kwh_iniziali ?? 0 }};
     aggiornaUI(kwhTotali);
 
-    // Backend pubblica TelemetriaRicevuta come '.ricarica.heartbeat' sul canale
-    // PRIVATO user.{id_utente}: solo l'utente autorizzato lo riceve.
     window.Echo.private(`user.${idUtente}`)
         .listen('.ricarica.heartbeat', (e) => {
             if (e.id_sessione && e.id_sessione !== sessionUuid) return;
@@ -270,7 +279,7 @@
             aggiornaUI(kwhTotali);
         });
 
-    // Aggiorno la durata ogni secondo
+    // Aggiorno la durata ogni secondo partendo dal timestamp salvato
     setInterval(() => {
         document.getElementById('time-display').innerText = formattaDurata(Date.now() - dataInizioMs);
     }, 1000);
@@ -316,6 +325,8 @@
             });
             const data = await resp.json();
             if (resp.ok) {
+                // Pulisco il timer dal sessionStorage: sessione conclusa
+                sessionStorage.removeItem(SK_SESSION_START);
                 window.location.href = '/profilo';
             } else {
                 alert(data.error || 'Errore durante la chiusura della sessione');
@@ -327,4 +338,5 @@
     }
 </script>
 @endpush
+
 @endsection

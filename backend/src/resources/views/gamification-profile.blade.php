@@ -3,7 +3,7 @@
 @section('content')
 
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600&display=swap');
+    /* Font caricati in layouts/app.blade.php — @import rimosso per non rompere la navbar sticky */
 
     :root {
         --bg:        #F7F6F2;
@@ -476,11 +476,7 @@ function avviaORestituisciCountdown() {
 
 function calcolaSecondiRimanenti() {
     const start = parseInt(sessionStorage.getItem(SK_ATTESA_START) || '0', 10);
-    // Se non c'è un timestamp di inizio salvato, non c'è un'attesa in corso:
-    // ritorniamo 0 (scaduta/inesistente). Ritornare TTL_QR causava il bug del
-    // banner "in attesa del cavo" che riappariva dopo una sessione gia' chiusa,
-    // perche' nascondi() puliva SK_ATTESA_START ma lasciava SK_ATTESA_PUNTO orfano.
-    if (!start) return 0;
+    if (!start) return TTL_QR;
     const trascorsi = Math.floor((Date.now() - start) / 1000);
     return Math.max(0, TTL_QR - trascorsi);
 }
@@ -514,8 +510,7 @@ function fermaCountdown() {
         clearInterval(countdownInterval);
         countdownInterval = null;
     }
-    // Bug fix 3: nasconde fisicamente il timer dal DOM così non rimane
-    // il "53 secondi rimanenti bloccato" dopo che il cavo è stato collegato
+    // Nasconde fisicamente il timer dal DOM (bug fix: non rimane "53s bloccato")
     const timerEl = document.getElementById('attesa-timer-value');
     if (timerEl) {
         const wrap = timerEl.closest('.attesa-timer');
@@ -526,8 +521,9 @@ function fermaCountdown() {
         const progressEl = barWrap.closest('.attesa-progress');
         if (progressEl) progressEl.style.display = 'none';
     }
-    // Pulisco anche il sessionStorage: la prenotazione è andata a buon fine
+    // Pulisco sessionStorage: prenotazione conclusa (con successo o scaduta)
     sessionStorage.removeItem(SK_ATTESA_START);
+    sessionStorage.removeItem(SK_ATTESA_PUNTO);
 }
 
 async function syncStatoIniziale() {
@@ -731,4 +727,4 @@ function renderSessioni(d) {
 document.addEventListener('DOMContentLoaded', caricaTutto);
 </script>
 
-@endsectionq
+@endsection

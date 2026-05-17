@@ -6,6 +6,7 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>GreenSchool — Portale Ricarica</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    {{-- Font caricati UNA SOLA VOLTA qui nel layout --}}
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&display=swap" rel="stylesheet">
     <style>
@@ -59,6 +60,7 @@
             padding: 2.5rem 1.5rem;
         }
 
+        /* ── NAVBAR ── */
         nav.gs-nav {
             position: sticky;
             top: 0;
@@ -84,11 +86,11 @@
             align-items: center;
             gap: 10px;
             text-decoration: none;
+            flex-shrink: 0;
         }
 
         .gs-logo-mark {
-            width: 28px;
-            height: 28px;
+            width: 28px; height: 28px;
             background: var(--accent);
             border-radius: 7px;
             display: flex;
@@ -105,6 +107,7 @@
             letter-spacing: -0.01em;
         }
 
+        /* Desktop nav links */
         .gs-nav-right {
             display: flex;
             align-items: center;
@@ -119,8 +122,7 @@
         }
 
         .gs-nav-divider {
-            width: 1px;
-            height: 16px;
+            width: 1px; height: 16px;
             background: var(--border);
             margin: 0 4px;
         }
@@ -133,8 +135,9 @@
             padding: 6px 12px;
             border-radius: 8px;
             transition: background 0.15s, color 0.15s;
+            white-space: nowrap;
         }
-        .gs-nav-link:hover { background: var(--surface2); color: var(--text); }
+        .gs-nav-link:hover  { background: var(--surface2); color: var(--text); }
         .gs-nav-link.active { background: var(--accent-bg); color: var(--accent); }
 
         .gs-logout-btn {
@@ -148,8 +151,97 @@
             cursor: pointer;
             font-family: inherit;
             transition: all 0.15s;
+            white-space: nowrap;
         }
         .gs-logout-btn:hover { background: var(--red-bg); border-color: #EBCECA; }
+
+        /* ── HAMBURGER (solo mobile) ── */
+        .gs-hamburger {
+            display: none;
+            flex-direction: column;
+            gap: 5px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 6px;
+            border-radius: 8px;
+            transition: background 0.15s;
+        }
+        .gs-hamburger:hover { background: var(--surface2); }
+        .gs-hamburger span {
+            display: block;
+            width: 22px; height: 2px;
+            background: var(--text);
+            border-radius: 2px;
+            transition: all 0.2s;
+        }
+
+        /* Drawer mobile */
+        .gs-mobile-menu {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 199;
+        }
+        .gs-mobile-menu.open { display: block; }
+
+        .gs-mobile-overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(0,0,0,0.25);
+        }
+
+        .gs-mobile-drawer {
+            position: absolute;
+            top: 60px; right: 0;
+            width: 220px;
+            background: var(--surface);
+            border-left: 1px solid var(--border);
+            border-bottom: 1px solid var(--border);
+            border-radius: 0 0 0 16px;
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            box-shadow: var(--shadow-lg);
+            animation: drawerIn 0.2s ease;
+        }
+        @keyframes drawerIn {
+            from { opacity: 0; transform: translateX(12px); }
+            to   { opacity: 1; transform: translateX(0); }
+        }
+
+        .gs-mobile-drawer .gs-nav-link {
+            display: block;
+            padding: 10px 14px;
+            font-size: 0.9rem;
+        }
+        .gs-mobile-drawer .gs-nav-divider {
+            width: 100%; height: 1px;
+            margin: 4px 0;
+        }
+        .gs-mobile-drawer .gs-logout-btn {
+            width: 100%;
+            text-align: left;
+            padding: 10px 14px;
+            font-size: 0.9rem;
+        }
+        .gs-mobile-user {
+            font-size: 0.78rem;
+            color: var(--text-3);
+            padding: 6px 14px 10px;
+            font-weight: 300;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 4px;
+        }
+
+        /* ── RESPONSIVE ── */
+        @media (max-width: 768px) {
+            .gs-nav-right  { display: none; }
+            .gs-hamburger  { display: flex; }
+
+            main { padding: 1.5rem 1rem; }
+        }
     </style>
 </head>
 <body>
@@ -160,14 +252,16 @@
             <div class="gs-logo-mark">🌱</div>
             <span class="gs-logo-text">GreenSchool</span>
         </a>
+
+        {{-- Desktop --}}
         <div class="gs-nav-right">
             @auth
                 <span class="gs-nav-user">{{ Auth::user()->nome }}</span>
                 <div class="gs-nav-divider"></div>
-                <a href="/map"         class="gs-nav-link {{ request()->is('map') ? 'active' : '' }}">Mappa</a>
-                <a href="/profilo"     class="gs-nav-link {{ request()->is('profilo') ? 'active' : '' }}">Profilo</a>
-                <a href="/classifica"  class="gs-nav-link {{ request()->is('classifica') ? 'active' : '' }}">Classifica</a>
-                <a href="/scuola"      class="gs-nav-link {{ request()->is('scuola') ? 'active' : '' }}">Scuola</a>
+                <a href="/map"        class="gs-nav-link {{ request()->is('map')        ? 'active' : '' }}">Mappa</a>
+                <a href="/profilo"    class="gs-nav-link {{ request()->is('profilo')    ? 'active' : '' }}">Profilo</a>
+                <a href="/classifica" class="gs-nav-link {{ request()->is('classifica') ? 'active' : '' }}">Classifica</a>
+                <a href="/scuola"     class="gs-nav-link {{ request()->is('scuola')     ? 'active' : '' }}">Scuola</a>
                 <div class="gs-nav-divider"></div>
                 <form action="{{ route('logout') }}" method="POST" style="display:inline;">
                     @csrf
@@ -177,8 +271,49 @@
                 <a href="/login" class="gs-nav-link" style="color:var(--accent);font-weight:600;">Accedi</a>
             @endauth
         </div>
+
+        {{-- Mobile hamburger --}}
+        @auth
+        <button class="gs-hamburger" id="gs-hamburger" aria-label="Menu" aria-expanded="false">
+            <span></span><span></span><span></span>
+        </button>
+        @endauth
     </div>
 </nav>
+
+{{-- Mobile drawer --}}
+@auth
+<div class="gs-mobile-menu" id="gs-mobile-menu">
+    <div class="gs-mobile-overlay" id="gs-mobile-overlay"></div>
+    <div class="gs-mobile-drawer">
+        <p class="gs-mobile-user">{{ Auth::user()->nome }}</p>
+        <a href="/map"        class="gs-nav-link {{ request()->is('map')        ? 'active' : '' }}">Mappa</a>
+        <a href="/profilo"    class="gs-nav-link {{ request()->is('profilo')    ? 'active' : '' }}">Profilo</a>
+        <a href="/classifica" class="gs-nav-link {{ request()->is('classifica') ? 'active' : '' }}">Classifica</a>
+        <a href="/scuola"     class="gs-nav-link {{ request()->is('scuola')     ? 'active' : '' }}">Scuola</a>
+        <div class="gs-nav-divider"></div>
+        <form action="{{ route('logout') }}" method="POST">
+            @csrf
+            <button type="submit" class="gs-logout-btn">Esci</button>
+        </form>
+    </div>
+</div>
+
+<script>
+    const hamburger  = document.getElementById('gs-hamburger');
+    const mobileMenu = document.getElementById('gs-mobile-menu');
+    const overlay    = document.getElementById('gs-mobile-overlay');
+
+    hamburger?.addEventListener('click', () => {
+        const isOpen = mobileMenu.classList.toggle('open');
+        hamburger.setAttribute('aria-expanded', isOpen);
+    });
+    overlay?.addEventListener('click', () => {
+        mobileMenu.classList.remove('open');
+        hamburger.setAttribute('aria-expanded', false);
+    });
+</script>
+@endauth
 
 <main>
     @yield('content')
