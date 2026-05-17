@@ -4,6 +4,7 @@ import json
 import paho.mqtt.client as mqtt
 from enum import Enum
 from typing import Optional
+from api_client import ApiClient
 
 # Importiamo le dipendenze dal tuo progetto
 import config
@@ -215,7 +216,10 @@ class Punto_ricarica:
 class Stazione:
     """Gateway principale che gestisce la connessione MQTT e l'Heartbeat."""
 
+    #Da cambiare 
     def __init__(self, id_stazione: str, lista_id_punti: list[str]):
+
+        self.api_client = ApiClient()
         self.id_stazione = id_stazione
         self.punti: dict[str, Punto_ricarica] = {
             id_p: Punto_ricarica(id_p, self) for id_p in lista_id_punti
@@ -238,6 +242,55 @@ class Stazione:
 
         # Heartbeat unico per tutta la stazione
         threading.Thread(target=self._loop_heartbeat, daemon=True).start()
+
+    def registra(self):
+        # 1. Recupero la password dal file di configurazione
+        #password = config.PASSWORD_REGISTRAZIONE  # Cambialo con la tua variabile reale in config
+        password = ""
+
+        # 2. Faccio la chiamata API e catturo la risposta in sicurezza
+        dati = self.api_client.registra_colonnina(password)
+        if not dati:
+            print("[ERRORE] Registrazione fallita, impossibile procedere.")
+            return
+
+        # 3. Estraggo i dati usando i metodi sicuri (con i default in caso di errore)
+        self.id_stazione = dati.get("id_stazione")
+        id_punti = dati.get("id_punti", [])
+        
+        # 4. Genero i punti di ricarica dinamici ricevuti dall'API
+        self.punti = {
+            id_punto: Punto_ricarica(id_punto, self) for id_punto in id_punti
+        }
+
+        # 5. Configuro il client MQTT con il nuovo ID della stazione
+        user_mqtt = dati.get("user_mqtt")
+        password_mqtt = dati.get("password_mqtt")
+        host_mqtt = dati.get("host_mqtt")
+        port_mqtt = dati.get("port_mqtt")
+
+        self.mqtt = mqtt.Client(
+            mqtt.CallbackAPIVersion.VERSION2,
+            client_id=f"stazione-{self.id_stazione}",
+        )
+        self.mqtt.username_pw_set(user_mqtt, password_mqtt)
+        self.mqtt.on_connect = self._on_connect
+        self.mqtt.on_message = self._on_message
+
+
+
+        try:
+            self.mqtt.connect(host_mqtt, port_mqtt, keepalive=60)
+            self.mqtt.loop_start()
+            print(f"[MQTT] Connesso con successo per la stazione: {self.id_stazione}")
+        except Exception as e:
+            print(f"[ERRORE CONNETTIVITÀ] Impossibile collegarsi al Broker MQTT: {e}")
+
+
+        threading.Thread(target=self._loop_heartbeat, daemon=True).start()
+
+
+
 
     def _on_connect(self, client, userdata, flags, reason_code, properties):
         if reason_code == 0:

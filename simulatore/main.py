@@ -119,7 +119,8 @@ def chiudi(stazione: Stazione):
 
 def main():
     print(f"Avvio stazione id={config.ID_STAZIONE} con {len(config.ID_PUNTI)} punto/i")
-    stazione = Stazione(config.ID_STAZIONE, config.ID_PUNTI)
+
+    stazione = Stazione(config.ID_STAZIONE, config.ID_PUNTI) # al posto di questo bisognerà chiamare l'API
 
     while True:
         stampa_lista_punti(stazione)
