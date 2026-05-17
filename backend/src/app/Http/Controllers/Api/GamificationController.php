@@ -101,49 +101,55 @@ class GamificationController extends Controller
     }
 
     // ── GET /api/gamification/leaderboard ────────────────────────────────────
+    //
+    // NOTA: livello è GENERATED COLUMN STORED su MariaDB — non va usata
+    // dentro selectRaw con alias tabella né in subquery annidate perché
+    // alcune versioni di MariaDB lanciano un errore SQL.
+    // Soluzione: selezioniamo solo le colonne reali e ricalcoliamo livello
+    // in PHP con la stessa formula FLOOR(SQRT(xp / 100)).
+    //
+    // Il blade si aspetta array flat con:
+    //   id_utente, nome, cognome, xp_totali, livello,
+    //   co2_risparmiata_kg, sessioni_totali
 
     public function leaderboard(Request $request): JsonResponse
     {
-        $idUtente = $request->user()->id_utente;
-
-        // Top 10 per XP
+        // Step 1: top 10 per XP — NO livello nella select (GENERATED COLUMN)
         $top10 = DB::table('gamification_profilo_utente as g')
             ->join('utenti as u', 'u.id_utente', '=', 'g.id_utente')
             ->orderByDesc('g.xp_totali')
             ->limit(10)
-            ->selectRaw('
-                u.nome,
-                u.cognome,
-                g.xp_totali,
-                g.livello,
-                g.co2_risparmiata_kg,
-                g.id_utente
-            ')
-            ->get()
-            ->map(function ($row, $index) use ($idUtente) {
-                return [
-                    'posizione'          => $index + 1,
-                    'nome'               => $row->nome . ' ' . mb_substr($row->cognome, 0, 1) . '.',
-                    'xp_totali'          => (int) $row->xp_totali,
-                    'livello'            => (int) $row->livello,
-                    'co2_risparmiata_kg' => (float) $row->co2_risparmiata_kg,
-                    'sei_tu'             => $row->id_utente === $idUtente,
-                ];
-            });
+            ->select(
+                'u.id_utente',
+                'u.nome',
+                'u.cognome',
+                'g.xp_totali',
+                'g.co2_risparmiata_kg',
+            )
+            ->get();
 
-        // Posizione dell'utente corrente (anche se non è in top 10)
-        $posizione = DB::table('gamification_profilo_utente')
-            ->where('xp_totali', '>', function ($q) use ($idUtente) {
-                $q->from('gamification_profilo_utente')
-                  ->where('id_utente', $idUtente)
-                  ->select('xp_totali');
-            })
-            ->count() + 1;
+        // Step 2: sessioni per questi utenti in una sola query
+        $idUtenti = $top10->pluck('id_utente')->toArray();
+        $sessioni = DB::table('sessioni_ricarica')
+            ->whereIn('id_utente', $idUtenti)
+            ->whereNotNull('data_fine')
+            ->selectRaw('id_utente, COUNT(*) as tot')
+            ->groupBy('id_utente')
+            ->pluck('tot', 'id_utente');
 
-        return response()->json([
-            'classifica'        => $top10,
-            'posizione_utente'  => $posizione,
+        // Step 3: livello calcolato in PHP — stessa formula della GENERATED COLUMN
+        $result = $top10->map(fn($row) => [
+            'id_utente'          => $row->id_utente,
+            'nome'               => $row->nome,
+            'cognome'            => $row->cognome,
+            'xp_totali'          => (int)   $row->xp_totali,
+            'livello'            => (int)   floor(sqrt($row->xp_totali / 100)),
+            'co2_risparmiata_kg' => (float) round($row->co2_risparmiata_kg, 1),
+            'sessioni_totali'    => (int)   ($sessioni[$row->id_utente] ?? 0),
         ]);
+
+        // Array diretto — il blade fa: Array.isArray(json) ? json : (json.data ?? [])
+        return response()->json($result);
     }
 
     // ── GET /api/gamification/sessioni ───────────────────────────────────────

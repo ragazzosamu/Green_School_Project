@@ -463,8 +463,7 @@
                     </div>
 
                     <div class="field-group">
-                        <label class="field-label" for="cellulare">Cellulare <span style="color:var(--text-3); font-weight:400;">(opzionale)</span></label>
-                        <input class="field-input" id="cellulare" type="tel" name="cellulare"
+                            <label class="field-label" for="cellulare">Cellulare</label>                        <input class="field-input" id="cellulare" type="tel" name="cellulare"
                                value="{{ old('cellulare') }}" autocomplete="tel"
                                placeholder="+39 333 1234567">
                         @error('cellulare')
