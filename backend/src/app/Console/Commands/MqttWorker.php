@@ -179,9 +179,7 @@ class MqttWorker extends Command
             return;
         }
 
-        $kwh = isset($data['kwh_totali']) && is_numeric($data['kwh_totali'])
-            ? (float) $data['kwh_totali']
-            : 0.0;
+        $kwh = $this->sessioni->kwhCorrenti($idSessione);
 
         $esito = $this->sessioni->termina($idSessione, $kwh);
 

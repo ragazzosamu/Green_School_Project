@@ -476,7 +476,11 @@ function avviaORestituisciCountdown() {
 
 function calcolaSecondiRimanenti() {
     const start = parseInt(sessionStorage.getItem(SK_ATTESA_START) || '0', 10);
-    if (!start) return TTL_QR;
+    // Se non c'è un timestamp di inizio salvato, non c'è un'attesa in corso:
+    // ritorniamo 0 (scaduta/inesistente). Ritornare TTL_QR causava il bug del
+    // banner "in attesa del cavo" che riappariva dopo una sessione gia' chiusa,
+    // perche' nascondi() puliva SK_ATTESA_START ma lasciava SK_ATTESA_PUNTO orfano.
+    if (!start) return 0;
     const trascorsi = Math.floor((Date.now() - start) / 1000);
     return Math.max(0, TTL_QR - trascorsi);
 }
@@ -579,6 +583,7 @@ function nascondi() {
     idSessioneCorrente = null;
     idPuntoCorrente    = null;
     sessionStorage.removeItem(SK_ATTESA_START);
+    sessionStorage.removeItem(SK_ATTESA_PUNTO);
 }
 // ─────────────────────────────────────────────────────────────────────────────
 // FINE BANNER SESSIONE
