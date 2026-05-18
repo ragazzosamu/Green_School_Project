@@ -12,33 +12,38 @@ class Utenti extends Authenticatable
     use HasApiTokens, HasFactory, Notifiable;
 
     protected $table = 'utenti';
-    protected $primaryKey = 'id_utente'; // La tua chiave
+    protected $primaryKey = 'id_utente';
     public $incrementing = false;
     protected $keyType = 'string';
     public $timestamps = false;
 
     protected $fillable = [
-        'id_utente', 'email', 'password', 'cellulare', 'nome', 'cognome', 'tipo_account', 'attivo'
+        'id_utente', 'email', 'password', 'cellulare',
+        'nome', 'cognome', 'tipo_account', 'ruolo', 'attivo',
     ];
 
     protected $hidden = [
         'password', 'remember_token',
     ];
 
-    /**
-     * IMPORTANTE PER SANCTUM: 
-     * Sovrascriviamo questo metodo per dire a Sanctum che la chiave è id_utente
-     */
     public function getAuthIdentifierName()
     {
         return 'id_utente';
     }
 
-    public function sessioni() {
+    /** Restituisce true se l'utente è amministratore */
+    public function isAdmin(): bool
+    {
+        return $this->ruolo === 'admin';
+    }
+
+    public function sessioni()
+    {
         return $this->hasMany(Sessioni_ricarica::class, 'id_utente', 'id_utente');
     }
 
-    public function badges() {
+    public function badges()
+    {
         return $this->hasMany(Badge_utente::class, 'id_utente', 'id_utente');
     }
 }

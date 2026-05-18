@@ -262,6 +262,11 @@
                 <a href="/profilo"    class="gs-nav-link {{ request()->is('profilo')    ? 'active' : '' }}">Profilo</a>
                 <a href="/classifica" class="gs-nav-link {{ request()->is('classifica') ? 'active' : '' }}">Classifica</a>
                 <a href="/scuola"     class="gs-nav-link {{ request()->is('scuola')     ? 'active' : '' }}">Scuola</a>
+                @if(Auth::user()->isAdmin())
+                <div class="gs-nav-divider"></div>
+                <a href="/admin" class="gs-nav-link {{ request()->is('admin*') ? 'active' : '' }}"
+                   style="{{ request()->is('admin*') ? '' : 'color:#7C3AED;' }}">⚙ Admin</a>
+                @endif
                 <div class="gs-nav-divider"></div>
                 <form action="{{ route('logout') }}" method="POST" style="display:inline;">
                     @csrf
@@ -291,6 +296,10 @@
         <a href="/profilo"    class="gs-nav-link {{ request()->is('profilo')    ? 'active' : '' }}">Profilo</a>
         <a href="/classifica" class="gs-nav-link {{ request()->is('classifica') ? 'active' : '' }}">Classifica</a>
         <a href="/scuola"     class="gs-nav-link {{ request()->is('scuola')     ? 'active' : '' }}">Scuola</a>
+        @if(Auth::user()->isAdmin())
+        <a href="/admin" class="gs-nav-link {{ request()->is('admin*') ? 'active' : '' }}"
+           style="color:#7C3AED;font-weight:600;">⚙ Admin</a>
+        @endif
         <div class="gs-nav-divider"></div>
         <form action="{{ route('logout') }}" method="POST">
             @csrf
@@ -316,6 +325,34 @@
 @endauth
 
 <main>
+    {{-- Flash messages globali (es. redirect da AdminMiddleware) --}}
+    @if(session('error'))
+    <div id="gs-flash-error" style="
+        position:fixed;top:80px;left:50%;transform:translateX(-50%);z-index:9999;
+        background:#FEF2F2;border:1px solid #FECACA;color:#991B1B;
+        padding:0.75rem 1.25rem;border-radius:10px;font-size:0.85rem;font-weight:500;
+        box-shadow:0 4px 16px rgba(0,0,0,0.12);display:flex;align-items:center;gap:0.5rem;
+        max-width:480px;text-align:center;">
+        <span>⛔</span> {{ session('error') }}
+        <button onclick="document.getElementById('gs-flash-error').remove()"
+            style="margin-left:0.75rem;background:none;border:none;cursor:pointer;color:#991B1B;font-size:1rem;line-height:1;">✕</button>
+    </div>
+    <script>setTimeout(()=>{const el=document.getElementById('gs-flash-error');if(el)el.remove();},5000);</script>
+    @endif
+    @if(session('success'))
+    <div id="gs-flash-success" style="
+        position:fixed;top:80px;left:50%;transform:translateX(-50%);z-index:9999;
+        background:#F0FDF4;border:1px solid #BBF7D0;color:#166534;
+        padding:0.75rem 1.25rem;border-radius:10px;font-size:0.85rem;font-weight:500;
+        box-shadow:0 4px 16px rgba(0,0,0,0.12);display:flex;align-items:center;gap:0.5rem;
+        max-width:480px;text-align:center;">
+        <span>✅</span> {{ session('success') }}
+        <button onclick="document.getElementById('gs-flash-success').remove()"
+            style="margin-left:0.75rem;background:none;border:none;cursor:pointer;color:#166534;font-size:1rem;line-height:1;">✕</button>
+    </div>
+    <script>setTimeout(()=>{const el=document.getElementById('gs-flash-success');if(el)el.remove();},5000);</script>
+    @endif
+
     @yield('content')
 </main>
 

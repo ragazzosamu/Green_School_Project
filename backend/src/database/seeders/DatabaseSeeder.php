@@ -86,7 +86,9 @@ class DatabaseSeeder extends Seeder
         $this->call([
             Gamification_badge_catalogoSeeder::class,
             Gamification_profilo_utenteSeeder::class,
-            ScuolaSeeder::class,
+            ScuolaSeeder::class, 
+            AdminSeeder::class, //ogni volta che lamcio la migration si crea un nuovo admin in automatico
         ]);
+
     }
 }

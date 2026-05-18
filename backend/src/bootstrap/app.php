@@ -18,6 +18,9 @@ return Application::configure(basePath: dirname(__DIR__))
         __DIR__.'/../routes/channels.php',
     )
     ->withMiddleware(function (Middleware $middleware) {
+        $middleware->alias([
+        'admin' => \App\Http\Middleware\AdminMiddleware::class,
+    ]);
         // Fidiamoci dei proxy (ngrok, Cloudflare, reverse proxy locali ecc.).
         // Senza questa riga Laravel non legge X-Forwarded-Proto e crede di
         // ricevere richieste HTTP anche quando il client le ha mandate via

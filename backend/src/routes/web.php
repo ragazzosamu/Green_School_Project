@@ -5,6 +5,7 @@ use App\Http\Controllers\WebAuthController;
 use App\Models\Stazioni; // <--- Importante per caricare i dati nella rotta
 use App\Http\Controllers\Api\StationController;
 use Illuminate\Http\Request;
+use App\Http\Controllers\AdminController;
 
 // Se l'utente va all'indirizzo base (/), lo mandiamo automaticamente al login
 Route::get('/', function () {
@@ -97,3 +98,18 @@ Route::get('/profilo', function (Request $request) {
         'kwh_attuali'     => $kwhAttuali,
     ]);
 })->name('profilo')->middleware('auth');
+
+// ── ROTTE ADMIN ──────────────────────────────────────────────────────────────
+// Accessibili solo agli utenti con ruolo = 'admin'.
+// Il middleware 'admin' controlla ruolo e fa abort(403) se non autorizzato.
+Route::middleware(['auth', 'admin'])->prefix('admin')->group(function () {
+    Route::get('/',                              [AdminController::class, 'dashboard']);
+    Route::get('/utenti',                        [AdminController::class, 'utenti']);
+    Route::get('/utenti/{id}',                   [AdminController::class, 'dettaglioUtente']);
+    Route::post('/utenti/{id}',                  [AdminController::class, 'modificaUtente']);
+    Route::post('/utenti/{id}/toggle',           [AdminController::class, 'toggleUtente']);
+    Route::post('/utenti/{id}/reset',            [AdminController::class, 'resetPassword']);
+    Route::get('/sessioni',                      [AdminController::class, 'sessioni']);
+    Route::get('/stazioni',                      [AdminController::class, 'stazioni']);
+    Route::post('/stazioni/{id}/toggle',         [AdminController::class, 'toggleStazione']);
+});

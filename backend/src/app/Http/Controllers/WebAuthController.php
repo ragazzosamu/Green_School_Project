@@ -37,6 +37,19 @@ class WebAuthController extends Controller
             /** @var \App\Models\Utenti $user */
             $user = Auth::user();
 
+            // 2b. CHECK ACCOUNT ATTIVO: se l'account è stato disattivato da un admin,
+            // facciamo subito logout e restituiamo un errore rosso. Auth::attempt() non
+            // controlla questo campo da solo, quindi il check va fatto manualmente.
+            if (! $user->attivo) {
+                Auth::logout();
+                $request->session()->invalidate();
+                $request->session()->regenerateToken();
+
+                throw ValidationException::withMessages([
+                    'email' => ['Il tuo account è stato disattivato. Contatta un amministratore.'],
+                ]);
+            }
+
             // 3. GESTIONE TOKEN SANCTUM:
             // Prima cancelliamo eventuali vecchi token per non averne troppi nel database.
             $user->tokens()->delete(); 

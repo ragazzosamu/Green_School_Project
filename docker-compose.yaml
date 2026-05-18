@@ -10,6 +10,7 @@ services:
       MYSQL_DATABASE: db_green_school
       MYSQL_USER: admin
       MYSQL_PASSWORD: password
+     
     volumes:
       # I dati del DB vengono persistiti in locale per non perderli al riavvio
       - ./docker-data/mysql:/var/lib/mysql
