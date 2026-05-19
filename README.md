@@ -225,7 +225,7 @@ Il simulatore:
 Se è la stazione TEST già seedata come `attiva`, il sim parte subito a inviare heartbeat
 e a generare codici. Vedrai un menu interattivo con il **codice monouso a 6 cifre** in
 cima, valido per qualsiasi punto della stazione. Il codice cambia automaticamente ogni
-30 secondi (TTL Redis 60s).
+60 secondi (TTL Redis 60s).
 
 ```
 ========================================================
