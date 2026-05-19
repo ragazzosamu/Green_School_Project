@@ -9,20 +9,28 @@ class Punti_ricarica extends Model
 {
     use HasFactory;
 
-    protected $table = 'punti_ricarica'; //collega il modello alla tabella che contiene l elenco di tutte le prese di ricarica della scuola
-    protected $primaryKey = 'id_punto'; //dice che il codice univoco della presa è id_punto
-    public $incrementing = false; //anche qui non usiamo numeri progressivi automatici per gli id
-    protected $keyType = 'string'; //conferma che l identificativo della presa è scritto come testo
-    public $timestamps = false; //disabilita le date automatiche di sistema
+    protected $table = 'punti_ricarica';
+    // Chiave reale a livello DB e' composta (id_stazione, id_punto), ma
+    // Eloquent non la supporta nativamente. Teniamo 'id_punto' come
+    // primaryKey nominale per non rompere hydration/relations Eloquent
+    // (es. inRandomOrder()->first() restituirebbe un modello mal formato
+    // con primaryKey=null). NON usare ::find() perche' tornerebbe un punto
+    // qualsiasi con quel id_punto in qualsiasi stazione: usa sempre
+    // ->where(['id_stazione'=>X, 'id_punto'=>Y]) o DB::table().
+    protected $primaryKey = 'id_punto';
+    public $incrementing = false;
+    protected $keyType = 'string';
+    public $timestamps = false;
 
     protected $fillable = [
-        'id_punto', 
-        'id_stazione', 
-        'identificativo_fisico', 
-        'tipo_veicolo', 
-        'tipo_connettore', 
-        'potenza_max_kw', 
-        'stato_hardware', 
+        'id_punto',
+        'id_stazione',
+        'identificativo_fisico',
+        'tipo_veicolo',
+        'tipo_connettore',
+        'potenza_max_kw',
+        'stato_hardware',
+        'libera',
         'data_ultimo_heartbeat'
     ]; //qui ci sono tutte le caratteristiche della presa, tipo se è per macchine o moto e se in questo momento funziona (stato hardware)
 
@@ -40,8 +48,10 @@ class Punti_ricarica extends Model
         return $this->belongsTo(Stazioni::class, 'id_stazione', 'id_stazione'); //serve per capire in quale zona o parcheggio specifico della scuola si trova questa presa
     }
 
-    public function sessioni() 
+    public function sessioni()
     {
-        return $this->hasMany(Sessioni_ricarica::class, 'id_punto', 'id_punto'); //permette di vedere la lista completa di tutte le ricariche che sono state fatte su questa presa nel tempo
+        return Sessioni_ricarica::query()
+            ->where('id_stazione', $this->id_stazione)
+            ->where('id_punto', $this->id_punto);
     }
 }

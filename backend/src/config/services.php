@@ -35,9 +35,10 @@ return [
         ],
     ],
 
-    'qr' => [
-    'secret' => env('QR_SECRET'),
-    'domain' => env('QR_DOMAIN'),
+    'iot' => [
+        // Password globale di prima registrazione che ogni colonnina deve
+        // conoscere per chiamare POST /api/iot/registra.
+        'registration_password' => env('IOT_REGISTRATION_PASSWORD'),
     ],
 
     'mqtt' => [

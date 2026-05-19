@@ -8,14 +8,18 @@
     <p style="font-size:0.78rem;color:var(--text-3);margin-top:2px;">{{ $stazioni->count() }} stazioni nel sistema</p>
 </div>
 
+@if(session('success'))
+    <div class="alert-success">{{ session('success') }}</div>
+@endif
+
 <div class="admin-card">
     <table class="admin-table">
         <thead><tr>
             <th>Stazione</th>
             <th>Indirizzo</th>
-            <th>Punti totali</th>
-            <th>Punti liberi</th>
-            <th>Punti online</th>
+            <th style="text-align:center;">Punti totali</th>
+            <th style="text-align:center;">Punti liberi</th>
+            <th style="text-align:center;">Punti online</th>
             <th>Stato</th>
             <th>Azione</th>
         </tr></thead>
@@ -23,8 +27,11 @@
         @forelse($stazioni as $s)
         <tr>
             <td>
-                <p style="font-weight:600;color:var(--text);">{{ $s->nome }}</p>
-                <p style="font-size:0.68rem;color:var(--text-3);font-family:monospace;">{{ $s->id_stazione }}</p>
+                <p style="font-weight:600;color:var(--text);">{{ $s->nome ?? '— da configurare —' }}</p>
+                <p style="font-size:0.68rem;color:var(--text-3);font-family:monospace;">MAC {{ $s->id_stazione }}</p>
+                @if($s->stato_setup === 'in_setup')
+                    <span class="badge-pill badge-yellow" style="margin-top:4px;">In setup</span>
+                @endif
             </td>
             <td style="font-size:0.78rem;color:var(--text-2);">{{ $s->indirizzo ?? '—' }}</td>
             <td style="text-align:center;">{{ $s->punti_totali }}</td>
@@ -35,25 +42,28 @@
             </td>
             <td style="text-align:center;">{{ $s->punti_online }}</td>
             <td>
-                @php
-                    $stato = $s->stato_hardware;
-                    $cls = match($stato) {
-                        'online'                    => 'badge-green',
-                        'offline'                   => 'badge-red',
-                        'guasto'                    => 'badge-red',
-                        'manutenzione_programmata'  => 'badge-yellow',
-                        default                     => 'badge-gray',
-                    };
-                @endphp
-                <span class="badge-pill {{ $cls }}">{{ str_replace('_', ' ', $stato) }}</span>
+                {{-- Tag online/offline derivato a runtime: stato_hardware su
+                     stazioni non esiste piu'. La stazione e' online se non e'
+                     in manutenzione e ha almeno 1 punto online. --}}
+                @if($s->in_manutenzione)
+                    <span class="badge-pill badge-yellow">manutenzione</span>
+                @elseif($s->online ?? false)
+                    <span class="badge-pill badge-green">online</span>
+                @else
+                    <span class="badge-pill badge-red">offline</span>
+                @endif
             </td>
             <td>
-                <form method="POST" action="/admin/stazioni/{{ $s->id_stazione }}/toggle">
-                    @csrf
-                    <button type="submit" class="btn btn-sm {{ $stato === 'manutenzione_programmata' ? 'btn-outline' : 'btn-danger' }}">
-                        {{ $stato === 'manutenzione_programmata' ? '✅ Riporta online' : '🔧 Manutenzione' }}
-                    </button>
-                </form>
+                @if($s->stato_setup === 'in_setup')
+                    <a href="/admin/stazioni/{{ $s->id_stazione }}/setup" class="btn btn-primary btn-sm">Completa setup</a>
+                @else
+                    <form method="POST" action="/admin/stazioni/{{ $s->id_stazione }}/toggle" style="margin:0;">
+                        @csrf
+                        <button type="submit" class="btn btn-sm {{ $s->in_manutenzione ? 'btn-outline' : 'btn-danger' }}">
+                            {{ $s->in_manutenzione ? 'Riporta online' : 'Manutenzione' }}
+                        </button>
+                    </form>
+                @endif
             </td>
         </tr>
         @empty

@@ -25,18 +25,23 @@ class PuntoStatusChanged implements ShouldBroadcastNow
 
     /**
      * Canali su cui trasmettere l'evento.
-     * Includiamo stazione.{id} quando disponibile così la pagina di dettaglio
-     * stazione può ascoltare un solo canale invece di uno per ogni punto.
+     *
+     * id_punto ora e' locale alla stazione (vale "1", "2", ...): per evitare
+     * collisioni tra stazioni il canale per-punto include il MAC senza ":"
+     * (i due punti non sono caratteri validi nei nomi canale di
+     * Pusher/Reverb). Il canale stazione.{id} ascolta il dettaglio stazione.
      */
     public function broadcastOn(): array
     {
-        $channels = [
-            new Channel('mappa'),
-            new Channel("punto.{$this->idPunto}"),
-        ];
+        $channels = [new Channel('mappa')];
 
         if ($this->idStazione !== null) {
-            $channels[] = new Channel("stazione.{$this->idStazione}");
+            // I ":" non sono caratteri validi nei nomi canale Pusher/Reverb:
+            // normalizziamo il MAC togliendoli sia nel canale per-punto sia
+            // nel canale per-stazione. Frontend usa la stessa regola.
+            $macNorm = str_replace(':', '', $this->idStazione);
+            $channels[] = new Channel("punto.{$macNorm}.{$this->idPunto}");
+            $channels[] = new Channel("stazione.{$macNorm}");
         }
 
         return $channels;

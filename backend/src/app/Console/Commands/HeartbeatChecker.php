@@ -6,6 +6,7 @@ use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 use App\Models\Stazioni;
 use App\Models\Punti_ricarica;
 use App\Events\StazioneStatusChanged;
@@ -63,7 +64,10 @@ class HeartbeatChecker extends Command
 
                 // Punto online ma heartbeat troppo vecchio -> diventa offline
                 if ($heartbeatScaduto && $punto->stato_hardware === 'online') {
-                    $punto->update(['stato_hardware' => 'offline']);
+                    DB::table('punti_ricarica')
+                        ->where('id_stazione', $stazione->id_stazione)
+                        ->where('id_punto', $punto->id_punto)
+                        ->update(['stato_hardware' => 'offline']);
 
                     PuntoHardwareStatusChanged::dispatch(
                         $punto->id_punto,
@@ -78,7 +82,10 @@ class HeartbeatChecker extends Command
 
                 // Punto offline ma heartbeat fresco -> torna online
                 if (! $heartbeatScaduto && $punto->stato_hardware === 'offline') {
-                    $punto->update(['stato_hardware' => 'online']);
+                    DB::table('punti_ricarica')
+                        ->where('id_stazione', $stazione->id_stazione)
+                        ->where('id_punto', $punto->id_punto)
+                        ->update(['stato_hardware' => 'online']);
 
                     PuntoHardwareStatusChanged::dispatch(
                         $punto->id_punto,

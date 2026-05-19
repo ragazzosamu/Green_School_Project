@@ -1,364 +1,256 @@
-# ⚡ Green School Project
+# Green School Project
 
-Sistema di gestione per **stazioni di ricarica** di veicoli elettrici in ambito scolastico:
-mappa delle colonnine, avvio ricarica tramite QR code, monitoraggio in tempo reale dei
-consumi e gamification.
+Sistema di ricarica veicoli elettrici (auto, bici, monopattini) per ambito scolastico:
+mappa colonnine, **avvio ricarica con codice monouso a 6 cifre**, monitoraggio in
+tempo reale, pannello admin, gamification.
 
----
-
-## 🧩 Architettura
-
-Il progetto gira interamente in **Docker**. I servizi che compongono lo stack:
-
-| Servizio             | Container                    | Ruolo                                                              |
-|----------------------|------------------------------|--------------------------------------------------------------------|
-| `app`                | `green_app`                  | Backend **Laravel** (API REST + sito web). Porta `80`              |
-| `mariadb`            | `green_db`                   | Database **MariaDB**. Porta `3306`                                 |
-| `redis`              | `green_redis`                | Cache, code, sessioni e kWh in tempo reale                         |
-| `queue`              | `green_queue`                | Worker Laravel per i job in coda                                   |
-| `mqtt`               | `green_mqtt-broker`          | Broker **Mosquitto**: comunicazione colonnine ↔ backend. Porte `1883` (MQTT) e `9001` (MQTT su WebSocket) |
-| `mqtt-worker`        | `green_mqtt_worker`          | Worker che consuma i messaggi MQTT (telemetria, heartbeat, eventi) e dispatcha eventi Laravel |
-| `heartbeat_checker`  | `green_heartbeat_checker`    | Watchdog: marca offline i punti che non mandano heartbeat da oltre 3 minuti |
-| `reverb`             | `green_reverb`               | Server **WebSocket** verso il browser (broadcast eventi real-time). Porta `8080`, complementare a MQTT |
-| `python`             | `green_simulatore`           | **Simulatore** delle colonnine di ricarica (vedi `simulatore/`)    |
-
-```
-   Browser ──HTTP──► app (Laravel) ──► MariaDB / Redis
-                        │
-                        └──MQTT──► mqtt (Mosquitto) ◄──MQTT── simulatore (colonnine)
-```
-
-📂 **Documentazione per componente**
-- Backend Laravel → [`backend/README.md`](backend/README.md)
-- Simulatore colonnine → [`simulatore/README.md`](simulatore/README.md)
+> Questo README copre **setup, comandi e troubleshooting**.
+> Per il funzionamento interno (API, MQTT, WebSocket, flusso sessione, DB),
+> vedi [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 ---
 
-## 📦 Prerequisiti
+## Servizi Docker
 
-- [GitHub Desktop](https://desktop.github.com/) (o Git CLI)
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) — deve essere in esecuzione
-- [Node.js](https://nodejs.org/) — serve per compilare gli asset del frontend
-- [DBeaver](https://dbeaver.io/) — opzionale, per ispezionare il database
-- [MQTT Explorer](https://mqtt-explorer.com/) — opzionale, per vedere il traffico MQTT in tempo reale
+Stack definito in [`docker-compose.yaml`](docker-compose.yaml):
 
----
+| Servizio              | Container                 | Porta host | Ruolo |
+|-----------------------|---------------------------|------------|-------|
+| `app`                 | `green_app`               | `80`       | Backend Laravel (web + API). |
+| `mariadb`             | `green_db`                | `3306`     | Database. |
+| `redis`               | `green_redis`             | `6379`     | Cache + sessioni + kWh in tempo reale. |
+| `queue`               | `green_queue`             | —          | Worker Laravel queue. |
+| `mqtt`                | `green_mqtt-broker`       | `1883`, `9001` | Broker Mosquitto, anonimo. |
+| `mqtt-worker`         | `green_mqtt_worker`       | —          | Consuma MQTT (codice, telemetria, heartbeat, eventi) e dispatcha eventi Laravel. |
+| `heartbeat_checker`   | `green_heartbeat_checker` | —          | Watchdog: marca offline i punti senza heartbeat. |
+| `reverb`              | `green_reverb`            | `8080`     | WebSocket → browser (broadcast eventi real-time). |
+| `python`              | `green_simulatore`        | —          | Simulatore colonnine (CLI interattiva). |
 
-## 📑 Documenti comuni
-- **Tabella di marcia**: [Google Sheet Lavoro](https://docs.google.com/spreadsheets/d/1Zt4d4UcoLS2TqQH-RpuAC34dMfk1Hsu7lD3KwQfXs3c/edit?usp=sharing)
-
----
-
-## 🚀 Avvio del progetto
-
-### 1. Clona la repository
-```bash
-git clone <url-del-repository>
-cd Green_School_Project
 ```
-(oppure usa GitHub Desktop)
-
-### 2. Configura il file `.env` del backend
-```bash
-cd backend/src
-cp .env.example .env
-```
-
-### 3. Installa e compila gli asset frontend
-> ⚠️ Questi comandi vanno lanciati **sul tuo PC**, NON dentro Docker.
-```bash
-cd backend/src
-npm install
-npm install --save-dev laravel-echo pusher-js
-npm run build
-```
-
-### 4. Avvia i container
-```bash
-docker-compose up -d
-```
-
-### 5. Crea e popola il database
-```bash
-docker exec -it green_app php artisan migrate:fresh --seed
+Browser ──HTTP──► app (Laravel) ──► MariaDB / Redis
+                       │
+                       ├──WebSocket──► reverb ──► Browser  (eventi live)
+                       └──MQTT──► mqtt-broker ◄──MQTT── simulatore / Arduino
+                                     ▲
+                                     └── mqtt-worker (Laravel) consuma e scrive su DB/Redis
 ```
 
 ---
 
-## 🌐 Punti di accesso
+## Setup iniziale
 
-| Cosa              | Indirizzo                                  |
-|-------------------|--------------------------------------------|
-| Sito web          | [http://localhost](http://localhost)       |
-| API               | `http://localhost/api`                     |
-| Broker MQTT       | `localhost:1883`                           |
-| MQTT su WebSocket | `localhost:9001`                           |
-| WebSocket Reverb  | `localhost:8080` (di solito acceduto via Apache proxy, non direttamente) |
+```bash
+# 1. Configurazione env
+cp backend/src/.env.example backend/src/.env
+cp simulatore/.env.example  simulatore/.env
 
-**Connessione DBeaver:**
-- Tipo: `MySQL` · Host: `localhost` · Porta: `3306`
-- Database: `db_green_school` · Username: `admin` · Password: `password`
+# 2. Build + avvio
+docker compose build
+docker compose up -d
+
+# 3. Migrazioni + seed (TEST station + utente test + factory stations)
+docker exec green_app composer install
+docker exec green_app php artisan key:generate
+docker exec green_app php artisan migrate:fresh --seed
+```
+
+Apri http://localhost — di default trovi:
+- **Utente test:** `test.test@email.it` / `password123`
+- **Admin:** creato dal `AdminSeeder` (controlla il file per email/password).
+- **Stazione TEST attiva** con MAC `AA:BB:CC:DD:EE:FF` e 2 punti.
+- **5 stazioni factory** + sessioni storiche.
 
 ---
 
-## 🌍 Esporre il progetto via ngrok (demo da telefono o da remoto)
+## File `.env` essenziali
 
-Per provare l'app da telefono o farla vedere a distanza serve un tunnel HTTPS verso il
-tuo `localhost`. Usiamo **ngrok**: una sola porta esposta (la `80`), tutto il resto
-(WebSocket Reverb compreso) passa attraverso Apache che fa da reverse proxy. Vedi anche
-[ADR — Apache come reverse proxy WebSocket](docs/decisioni/2026-05-15-apache-reverse-proxy-websocket.md).
+### Backend (`backend/src/.env`)
 
-### Prerequisiti
+Le voci che riguardano la migrazione codice monouso:
 
-1. Account gratuito su [ngrok.com](https://ngrok.com/) e [scarica il client](https://ngrok.com/download).
-2. Una tantum, autentica il tuo ngrok con il token che ti dà il sito:
-   ```bash
-   ngrok config add-authtoken <il-tuo-token>
-   ```
-
-### Avvio del tunnel
-
-I container devono essere già su (`docker-compose up -d`). Poi in un terminale:
-
-```bash
-ngrok http 80
+```env
+IOT_REGISTRATION_PASSWORD=greenschool-iot-2025   # uguale a quella del simulatore
+MQTT_HOST=mqtt
+MQTT_PORT=1883
+CACHE_STORE=redis
+BROADCAST_CONNECTION=reverb
 ```
 
-ngrok stampa un URL pubblico tipo:
+### Simulatore (`simulatore/.env`)
+
+```env
+MAC_ADDRESS=AA:BB:CC:DD:EE:FF                    # id della colonnina nel DB
+PASSWORD_REGISTRAZIONE=greenschool-iot-2025      # = IOT_REGISTRATION_PASSWORD del backend
+NUMERO_PUNTI=2                                   # numero di prese fisiche
+BACKEND_URL=http://app                           # service name docker (NON localhost!)
+MQTT_HOST=green_mqtt-broker
+MQTT_PORT=1883
+METER_INTERVAL=5
+HEARTBEAT_INTERVAL=60
+CODICE_INTERVAL=30                               # nuovo codice ogni 30s (TTL Redis: 60s)
 ```
-Forwarding   https://botch-survival-repaying.ngrok-free.dev -> http://localhost:80
-```
 
-Quello è l'indirizzo da aprire dal telefono o da condividere. Funzionano:
-- Sito web (`/login`, `/map`, `/profilo`, ecc.)
-- API (`/api/...`)
-- WebSocket per gli aggiornamenti in tempo reale (passa sullo stesso URL, path `/app/`)
-
-### Cose da sapere
-
-- **L'URL cambia ogni volta** che riavvii `ngrok` (sul piano free). Se devi distribuirlo,
-  ripassalo a chi serve dopo ogni riavvio.
-- **Il login da remoto** funziona perché il backend si fida dei proxy esterni
-  (`trustProxies` in `bootstrap/app.php`) e legge `X-Forwarded-Proto: https` per gestire
-  i cookie in modo coerente.
-- **Il WebSocket** non richiede configurazione aggiuntiva: il JavaScript delle viste
-  legge l'host della pagina dinamicamente (`window.location.hostname`) e Apache fa il
-  tunneling verso Reverb via `mod_proxy_wstunnel`.
-- **`ngrok free` permette un solo tunnel**: non serve aprirne uno separato per la porta
-  `8080` di Reverb, è proprio il punto del reverse proxy.
+> Se lanci il simulatore dal tuo host (fuori da Docker), usa `BACKEND_URL=http://localhost`
+> e `MQTT_HOST=localhost`.
 
 ---
 
-## 🔋 Avviare una ricarica end-to-end (flusso operativo)
+## Comandi quotidiani
 
-Tutorial passo-passo per provare l'intero flusso di una ricarica, dall'utente che apre
-l'app fino alla sessione che parte. Funziona identico da **localhost** (PC) o da
-**ngrok** (telefono/remoto): cambia solo l'URL che apri.
-
-### 1. Apri il sito e fai login
-
-Vai su [http://localhost](http://localhost) (oppure sull'URL ngrok se vuoi provare da
-telefono). Schermata di login.
-
-Usa l'utente di test creato dai seeder:
-- **Email**: `test.test@email.it`
-- **Password**: `password123`
-
-> 💡 Se l'utente non esiste, hai saltato il `php artisan migrate:fresh --seed` allo step
-> 5 dell'avvio. Rilancialo.
-
-### 2. Mappa: stazioni offline
-
-Appena loggato vai su `/map`. **All'inizio tutte le stazioni sono grigie** (offline)
-perché il `heartbeat_checker` non riceve segnali dal mondo fisico e le marca come
-"non raggiungibili". Serve "accendere" almeno una colonnina simulata.
-
-### 3. Avvia il simulatore colonnine
-
-Apri un terminale separato e entra nel container del simulatore:
+### Avviare il simulatore
 
 ```bash
-docker compose exec python bash
-python3 main.py
+docker exec -it green_simulatore python main.py
 ```
 
-Da subito il simulatore inizia a inviare heartbeat MQTT verso il backend. Entro circa
-**30 secondi** la stazione passa da grigia a verde sulla mappa (in tempo reale, via
-WebSocket).
+Output atteso:
+```
+[REG] Stazione AA:BB:CC:DD:EE:FF registrata. stato_setup=attiva.
+[MQTT] Connesso a green_mqtt-broker:1883.
+[READY] Stazione attivata con punti ['1', '2'].
 
-### 4. Genera i QR code delle prese
-
-Una tantum, prepara tutti i QR code (uno per ogni punto di ricarica censito):
-
-```bash
-docker compose exec app php artisan app:genera-tutti
+========================================================
+  STAZIONE  AA:BB:CC:DD:EE:FF
+  CODICE    482931    (valido per qualsiasi punto)
+========================================================
+  [1] punto 1  [    ]  LIBERA    libero
+  [2] punto 2  [    ]  LIBERA    libero
+  [q] Esci
 ```
 
-I file SVG escono in `backend/src/storage/app/private/public/qrcodes/`. Ti servirà
-quello del **punto specifico** che proverai a usare nello step 6.
+Comandi del menu:
+- numero → entra nel punto
+- dentro al punto: `1` collega cavo, `2` scollega, `4` stato, `5` termina, `b` indietro, `q` esci
 
-### 5. Avvia la sessione lato utente
+Il codice in cima si aggiorna ogni 30s (in background). Per vederlo aggiornato premi `b` per
+rifare il menu o rientra nella lista punti.
 
-Dal sito:
-1. Click sul pallino verde della stazione → "Vai al dettaglio →"
-2. Scegli una presa libera → click su "Scegli →"
-3. La fotocamera si apre. **Inquadra il QR** del punto generato allo step 4 (puoi
-   puntare la fotocamera direttamente allo schermo dove visualizzi il SVG)
-4. Vieni rediretto su `/profilo` con un banner giallo **"In attesa del cavo"** e un
-   countdown di 60 secondi
-
-### 6. Simula il collegamento del cavo
-
-Torna al terminale del simulatore (quello dello step 3). Vedrai un menu interattivo:
-1. Premi il **numero del punto** corrispondente al QR scansionato → entri nel sotto-menu
-2. Premi **`1`** → "Collega cavo"
-
-Il simulatore pubblica `cavo_collegato` su MQTT. Il worker MQTT del backend lo riceve,
-crea la sessione su DB, dispatcha l'evento `SessioneAvviata` via WebSocket.
-
-### 7. La ricarica è partita
-
-Sul sito il banner diventa **verde** "Sessione in corso" e i kWh iniziano a salire
-ogni 5 secondi (telemetria pubblicata dal simulatore). Click su "Vai alla sessione →"
-per vedere il dettaglio.
-
-Per terminare: nel sito click su "Termina ricarica", oppure nel simulatore scollega
-il cavo (opzione `2`) o termina manualmente (opzione `5`).
-
----
-
-## 🛠️ Comandi utili
+### Log e debug
 
 ```bash
-# Genera il QR code SVG di una stazione (output in storage/app/private/public/qrcodes)
-docker exec -it green_app php artisan app:genera 1
-
-# Genera tutti i QR
-docker exec -it green_app php artisan app:genera-tutti
-
-# Stampa i token delle stazioni
-docker exec -it green_app php artisan app:stampa-token
+docker logs -f green_mqtt_worker         # vede ogni messaggio MQTT in arrivo
+docker logs -f green_app                 # log Laravel (API, broadcast)
+docker logs -f green_simulatore          # output del simulatore
+docker exec green_app php artisan pail   # tail live dei log Laravel
 ```
 
-### Gestione container
+### Reset DB
+
 ```bash
-docker-compose stop          # Ferma i container (senza eliminarli)
-docker-compose down          # Spegne e rimuove i container (immagini e volumi restano)
-docker-compose down --rmi all # Spegne e rimuove anche le IMMAGINI
-docker-compose up -d          # Avvia (riusa le immagini esistenti, NON ricostruisce)
-docker-compose up -d --build # Avvia RICOSTRUENDO le immagini (rifà pip install / composer install)
-docker logs -f green_app     # Log PHP in tempo reale
-docker logs -f green_simulatore   # Log del simulatore colonnine
+docker exec green_app php artisan migrate:fresh --seed
 ```
 
-> 💡 **Quando serve `--build`?** Il codice (`.py`, `.php`) è montato come volume, quindi
-> le modifiche si vedono subito senza ricostruire. Ma le **dipendenze** (`requirements.txt`,
-> `composer.json`) sono installate *dentro l'immagine*: se le cambi devi rifare il build,
-> altrimenti Docker riusa l'immagine vecchia con le dipendenze vecchie.
-> Vedi la sezione [Volumi vs Immagine](#-volumi-vs-immagine--cosa-cambia-dove).
+### Pulizia cache Laravel
 
-### Pulire la cache di Laravel
 ```bash
-docker exec -it green_app php artisan optimize:clear
-# oppure singolarmente:
-docker exec -it green_app php artisan config:clear
-docker exec -it green_app php artisan cache:clear
-docker exec -it green_app php artisan route:clear
-docker exec -it green_app php artisan view:clear
+docker exec green_app php artisan optimize:clear
 ```
 
-### Far ripartire tutto da capo (reset completo)
-> ⚠️ Cancella i container, i volumi e i dati del database. Da usare quando qualcosa
-> è "incastrato" e vuoi ripartire pulito.
+### Composer (dopo modifica `composer.json` o spostamento file)
+
 ```bash
-docker-compose down -v               # Spegne e rimuove container + volumi
-docker-compose up -d --build         # Ricostruisce e riavvia tutto
-docker exec -it green_app php artisan migrate:fresh --seed   # Ricrea il database
+docker exec green_app composer dump-autoload -o
+docker exec green_app composer install
 ```
-Se vuoi azzerare **anche le immagini** (es. dopo aver cambiato `requirements.txt` /
-`composer.json` o se l'immagine è corrotta):
+
+### Apri MariaDB CLI
+
 ```bash
-docker-compose down -v --rmi all     # Rimuove container + volumi + immagini del progetto
-docker-compose up -d --build         # Ricostruisce tutto da zero
-docker exec -it green_app php artisan migrate:fresh --seed
+docker exec -it green_db mariadb -u admin -ppassword db_green_school
 ```
-Per liberare spazio in modo aggressivo (rimuove anche immagini/cache di altri progetti):
+
+Query utili:
+```sql
+SELECT id_stazione, stato_setup, in_manutenzione FROM stazioni;
+SELECT id_stazione, id_punto, stato_hardware, libera, data_ultimo_heartbeat FROM punti_ricarica;
+SELECT * FROM sessioni_ricarica WHERE data_fine IS NULL;
+```
+
+### Apri Redis CLI
+
 ```bash
-docker-compose down -v
-docker system prune -af              # Rimuove immagini, build cache e roba inutilizzata
-docker-compose up -d --build
-docker exec -it green_app php artisan migrate:fresh --seed
+docker exec -it green_redis redis-cli
+```
+
+Chiavi tipiche:
+```
+KEYS codice:*                # codici monouso attivi
+KEYS codice_pending:*        # prenotazioni dopo /api/verifica-codice
+KEYS sessione_kwh:*          # kWh accumulati delle sessioni in corso
+GET codice:AA:BB:CC:DD:EE:FF
 ```
 
 ---
 
-## 📦 Volumi vs Immagine — cosa cambia dove
+## Flusso operativo (overview)
 
-Capire questa distinzione evita il 90% dei "perché non funziona se ho già modificato il file?".
+1. **Una nuova colonnina si registra:** `docker exec -it green_simulatore python main.py` (o lo stesso codice su Arduino).
+   - Il simulatore manda `POST /api/iot/registra { mac, password, numero_punti }`.
+   - Backend crea `stazioni` con `stato_setup='in_setup'` + N record in `punti_ricarica`.
+2. **L'admin completa il setup:** apre `/admin/stazioni` → vede la stazione marcata "In setup" → clicca **Completa setup** → compila nome, coordinate, tipo veicolo / connettore / potenza per ogni punto → **Salva e attiva**.
+   - Backend porta `stato_setup='attiva'` e pubblica `stazione/{mac}/ready` via MQTT.
+3. **Il simulatore riceve `ready`** e parte a generare un codice ogni 30s sul topic `stazione/{mac}/codice`. Il mqtt-worker lo salva su Redis (`codice:{mac}`, TTL 60s).
+4. **L'utente apre la mappa** (http://localhost), seleziona una stazione attiva, clicca su un punto libero → vede il form **"Inserisci codice monouso"**.
+5. **L'utente legge il codice dal display della colonnina** (nel sim: lo trova in cima al menu) e lo digita nell'app → `POST /api/verifica-codice`.
+6. **Backend verifica**, prenota la stazione (SETNX `codice_pending:{mac}`, TTL 60s), pubblica `stazione/{mac}/comandi { autenticazione_completata }` per l'hardware → risposta `202` → frontend va su `/profilo`.
+7. **L'utente collega il cavo** su uno qualsiasi dei punti della stazione → il simulatore pubblica `stazione/{mac}/{id_punto}/eventi { cavo_collegato }`.
+8. **Il mqtt-worker** consuma il pending, chiama `sp_avvio_sessione`, crea la riga in `sessioni_ricarica`, pubblica `stazione/{mac}/{id_punto}/comandi { START, id_sessione }`.
+9. **Il simulatore riceve `START`**, avvia il thread di telemetria che pubblica V/I ogni 5s su `stazione/{mac}/{id_punto}/telemetria`. Il backend accumula kWh in Redis (`sessione_kwh:{id}`).
+10. **L'utente vede il kWh live** sul profilo (WebSocket `user.{id_utente}` evento `ricarica.heartbeat`).
+11. **Termine sessione:** l'utente scollega il cavo → `cavo_scollegato` → `sp_termina_sessione` chiude la riga DB, scrive `quantita_kwh` finale, calcola costo, aggiorna gamification.
 
-**L'immagine** è la "fotografia" costruita dal `Dockerfile`: dentro ci finiscono il sistema,
-gli strumenti e le **dipendenze installate** (`pip install -r requirements.txt`,
-`composer install`). Si crea/aggiorna solo con un **build**.
+Tutti i dettagli (endpoints, payload, middleware, topic, schema DB, broadcast) sono in [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
-**Il volume** (bind mount, es. `./simulatore:/simulatore` o `./backend/src:/var/www/html`)
-è una cartella del tuo PC "prestata" al container: i file sono gli stessi, quindi se
-modifichi il codice sull'host lo vedi subito anche nel container, **senza ricostruire**.
+---
 
-Il punto chiave: **il volume monta SOPRA l'immagine**. Quindi il codice viene dal tuo PC,
-ma le dipendenze NO — quelle stanno in posti dell'immagine (`site-packages`, `vendor/`)
-che il volume non tocca.
+## Troubleshooting
 
-| Cosa hai cambiato | Serve il rebuild? | Comando |
+| Sintomo | Causa probabile | Fix |
 |---|---|---|
-| Codice (`.py`, `.php`, `.blade.php`) | ❌ No, basta il volume | il file è già aggiornato |
-| `requirements.txt` / `composer.json` | ✅ Sì | `docker-compose up -d --build` |
-| `Dockerfile` | ✅ Sì | `docker-compose up -d --build` |
-| `docker-compose.yaml` | ❌ No (ricrea il container) | `docker-compose up -d` |
+| `Errore di rete: Connection refused` lato sim | `BACKEND_URL=http://localhost` in container | usa `http://app` |
+| `Password registrazione non valida` 401 | `IOT_REGISTRATION_PASSWORD` ≠ `PASSWORD_REGISTRAZIONE` | allinea i due `.env` |
+| Sim resta su "in attesa di ready" | Admin non ha completato setup | vai su `/admin/stazioni`, clicca **Completa setup** |
+| `Codice non valido o scaduto` 422 | TTL Redis scaduto (>60s) o codice mai pubblicato | verifica `KEYS codice:*` in Redis; controlla che il mqtt-worker veda il codice nei log |
+| Sessione non si avvia dopo `cavo_collegato` | SP `sp_verifica_disponibilita` blocca (heartbeat null o stato_hardware ≠ online) | controlla `SELECT data_ultimo_heartbeat, stato_hardware FROM punti_ricarica` |
+| `Duplicate entry '…-1' for key 'PRIMARY'` su seed | seeder vecchio cached nel container | `composer dump-autoload -o` + `optimize:clear` |
+| Eventi WebSocket non arrivano al frontend | `:` nei nomi canale (non validi Pusher/Reverb) | gli eventi normalizzano già il MAC; verifica che reverb sia su |
+| `Failed to open stream … Controller.php` | classmap Composer stale | `composer dump-autoload -o` |
+| Container vede vecchio codice | Docker volume non riflette host | `docker restart green_app` o `docker compose down/up` |
 
-> Esempio concreto: il simulatore gira sul codice montato da `./simulatore`, quindi se
-> tocchi `stazione.py` la modifica c'è subito. Ma se aggiungi una libreria a
-> `requirements.txt`, finché non fai `--build` il `pip install` non viene rifatto e il
-> container continua a girare senza quella libreria → `ModuleNotFoundError`.
+---
 
-### Ispezionare MQTT
-```bash
-# Vede tutti i messaggi che passano sul broker
-docker exec -it green_mqtt-broker mosquitto_sub -t 'stazione/#' -v
+## Layout repo
+
 ```
-Oppure usa **MQTT Explorer** connettendoti a `localhost:1883`.
-
----
-
-## 🧪 Guida ai Test API con Postman
-
-Usiamo un file JSON condiviso per le rotte. Grazie alle **variabili d'ambiente** e agli
-**script automatici**, non devi mai cambiare a mano gli URL o incollare i token.
-
-### 1. Setup ambiente (solo la prima volta)
-1. In alto a destra, clicca su **Environments**.
-2. Crea un nuovo ambiente con il tasto **+** e chiamalo `Sviluppo Locale`.
-3. Aggiungi la variabile `api` con **Initial Value** = `http://localhost/api`.
-4. Salva, poi seleziona `Sviluppo Locale` dal menu a tendina in alto a destra.
-
-### 2. Importazione collezione
-1. Su Postman, clicca **Import** e trascina `postman/Green_School_Project.postman_collection.json`.
-2. Se la avevi già, scegli **Replace**.
-3. Gli URL sono scritti come `{{api}}/NOME_ROTTA`: Postman sostituisce `{{api}}` da solo.
-
-### 3. Autenticazione automatica (Login & Token)
-Il progetto usa **Laravel Sanctum**. Non serve copiare il token a mano:
-1. Apri la richiesta **Login** e clicca **Send**.
-2. Uno script salva automaticamente il token d'accesso.
-3. Da qui in poi tutte le rotte protette useranno il token in autonomia.
-
----
-
-## 🔄 Regole del team — ad ogni modifica delle API
-
-Se modifichi un controller o aggiungi una rotta su Laravel:
-
-1. **Aggiorna Postman**: crea/modifica la richiesta nel tuo Postman locale.
-2. **Esporta il JSON**: tre puntini `...` sulla collezione → **Export**, sovrascrivi il file nella repo.
-3. **Commit & Push**: carica il JSON insieme al codice PHP.
-4. **Segnala** sul gruppo: *"Nuova rotta: [nome]. Fate pull e re-importate il JSON!"*.
-5. **Ricezione**: i compagni fanno `git pull` e re-importano il file (l'ambiente `Sviluppo Locale` non va toccato).
+.
+├── README.md                          ← questo file
+├── ARCHITECTURE.md                    ← spiegazione dell'app
+├── docker-compose.yaml
+├── backend/                           ← Laravel
+│   ├── Dockerfile
+│   └── src/
+│       ├── app/
+│       │   ├── Console/Commands/      ← MqttWorker, HeartbeatChecker
+│       │   ├── Events/                ← eventi broadcast WebSocket
+│       │   ├── Http/Controllers/
+│       │   │   ├── AdminController.php          ← pannello admin
+│       │   │   ├── Api/IotController.php        ← /api/iot/registra
+│       │   │   ├── Api/SessionController.php    ← /api/verifica-codice
+│       │   │   ├── Api/StationController.php    ← /api/stations
+│       │   │   └── …
+│       │   ├── Models/
+│       │   └── Services/              ← CodiceMonousoService, SessioneService, MqttService, GamificationService
+│       ├── database/
+│       │   ├── migrations/            ← schema DB + stored procedure
+│       │   └── seeders/
+│       ├── resources/views/           ← Blade
+│       └── routes/                    ← api.php / web.php
+├── simulatore/                        ← Python CLI
+│   ├── main.py
+│   ├── stazione.py
+│   ├── sessione.py
+│   ├── api_client.py
+│   └── config.py
+├── mqtt/                              ← config Mosquitto
+└── postman/                           ← collezione Postman
+```

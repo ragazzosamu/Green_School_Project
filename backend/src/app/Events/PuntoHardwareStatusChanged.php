@@ -25,10 +25,14 @@ class PuntoHardwareStatusChanged implements ShouldBroadcastNow
 
     public function broadcastOn(): array
     {
+        // id_punto e' locale alla stazione ("1", "2", ...): il canale per-punto
+        // include il MAC senza ":" per non collidere fra stazioni diverse.
+        $macNorm = str_replace(':', '', $this->idStazione);
+
         return [
             new Channel('mappa'),
-            new Channel("punto.{$this->idPunto}"),
-            new Channel("stazione.{$this->idStazione}"),
+            new Channel("punto.{$macNorm}.{$this->idPunto}"),
+            new Channel("stazione.{$macNorm}"),
         ];
     }
 

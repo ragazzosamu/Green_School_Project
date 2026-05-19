@@ -167,10 +167,8 @@ class GamificationController extends Controller
             ->select('id_sessione', 'data_inizio', 'data_fine', 'quantita_kwh', 'costo_totale')
             ->get()
             ->map(function ($s) {
-                $kwh       = (float) ($s->quantita_kwh ?? 0);
-                $ora       = (int) date('H', strtotime($s->data_inizio));
-                $notturna  = $ora >= 22 || $ora < 6;
-                $xp        = max(5, (int) round($kwh * 10) + ($notturna ? 20 : 0));
+                $kwh = (float) ($s->quantita_kwh ?? 0);
+                $xp  = max(5, (int) round($kwh * 10));
 
                 // Durata in ore e minuti
                 $secondi   = strtotime($s->data_fine) - strtotime($s->data_inizio);

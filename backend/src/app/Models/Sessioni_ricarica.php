@@ -17,15 +17,16 @@ class Sessioni_ricarica extends Model
     protected $keyType = 'string'; //chiarisce al sistema che l id è fatto di lettere e numeri (testo) e non è un numero intero
     public $timestamps = false; //serve a dire a laravel di non cercare le sue colonne prefissate per le date perchè usiamo i campi data_inizio e data_fine
 
-    protected $fillable = [ 
-        'id_sessione', 
-        'id_utente', 
-        'id_punto', 
-        'metodo_avvio', 
-        'data_inizio', 
-        'data_fine', 
-        'quantita_kwh', 
-        'costo_totale', 
+    protected $fillable = [
+        'id_sessione',
+        'id_utente',
+        'id_stazione',
+        'id_punto',
+        'metodo_avvio',
+        'data_inizio',
+        'data_fine',
+        'quantita_kwh',
+        'costo_totale',
         'stato_pagamento'
     ]; //questo è un elenco di sicurezza: sono gli unici campi della tabella dove il codice ha il permesso di scrivere dei dati
 

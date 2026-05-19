@@ -3,9 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Models\Utenti;
+use App\Services\MqttService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 
 /**
  * AdminController — Pannello amministrazione GreenSchool
@@ -35,10 +37,28 @@ class AdminController extends Controller
             'kwh_totali'       => (float) DB::table('sessioni_ricarica')
                                     ->whereNotNull('data_fine')
                                     ->sum('quantita_kwh'),
-            'stazioni_online'  => DB::table('punti_ricarica')
-                                    ->where('stato_hardware', 'online')->count(),
-            'stazioni_offline' => DB::table('punti_ricarica')
-                                    ->whereIn('stato_hardware', ['offline', 'guasto'])->count(),
+            // Stazione "online" = almeno un suo punto e' online E la stazione
+            // non e' in manutenzione. Tutto il resto e' offline.
+            'stazioni_online'  => DB::table('stazioni as st')
+                                    ->where('st.stato_setup', 'attiva')
+                                    ->where('st.in_manutenzione', false)
+                                    ->whereExists(function ($q) {
+                                        $q->select(DB::raw(1))
+                                          ->from('punti_ricarica as p')
+                                          ->whereColumn('p.id_stazione', 'st.id_stazione')
+                                          ->where('p.stato_hardware', 'online');
+                                    })->count(),
+            'stazioni_offline' => DB::table('stazioni as st')
+                                    ->where('st.stato_setup', 'attiva')
+                                    ->where(function ($q) {
+                                        $q->where('st.in_manutenzione', true)
+                                          ->orWhereNotExists(function ($q2) {
+                                              $q2->select(DB::raw(1))
+                                                 ->from('punti_ricarica as p')
+                                                 ->whereColumn('p.id_stazione', 'st.id_stazione')
+                                                 ->where('p.stato_hardware', 'online');
+                                          });
+                                    })->count(),
             'sessioni_attive'  => DB::table('sessioni_ricarica')
                                     ->whereNull('data_fine')->count(),
             'revenue_totale'   => (float) DB::table('sessioni_ricarica')
@@ -216,43 +236,170 @@ class AdminController extends Controller
 
     public function stazioni(): \Illuminate\View\View
     {
+        // stato online/offline calcolato a runtime dai punti + flag manutenzione.
+        // Non c'e' piu' la colonna stazioni.stato_hardware.
         $stazioni = DB::table('stazioni as st')
             ->leftJoin('punti_ricarica as p', 'p.id_stazione', '=', 'st.id_stazione')
             ->selectRaw('
-                st.id_stazione, st.nome, st.indirizzo, st.stato_hardware,
+                st.id_stazione, st.nome, st.indirizzo, st.stato_setup, st.in_manutenzione,
                 COUNT(p.id_punto) as punti_totali,
                 SUM(CASE WHEN p.libera = 1 AND p.stato_hardware = "online" THEN 1 ELSE 0 END) as punti_liberi,
                 SUM(CASE WHEN p.stato_hardware = "online" THEN 1 ELSE 0 END) as punti_online
             ')
-            ->groupBy('st.id_stazione', 'st.nome', 'st.indirizzo', 'st.stato_hardware')
+            ->groupBy('st.id_stazione', 'st.nome', 'st.indirizzo', 'st.stato_setup', 'st.in_manutenzione')
+            ->orderBy('st.stato_setup')
             ->orderBy('st.nome')
-            ->get();
+            ->get()
+            ->map(function ($s) {
+                // tag online/offline derivato: online se non in manutenzione E almeno un punto online
+                $s->online = ! $s->in_manutenzione && (int) $s->punti_online > 0;
+                return $s;
+            });
 
         return view('admin.stazioni', compact('stazioni'));
     }
 
-    public function toggleStazione(Request $request, string $id): \Illuminate\Http\RedirectResponse
+    /**
+     * Form di completamento setup per una stazione che si e' appena registrata
+     * via POST /api/iot/registra (stato_setup='in_setup'). L'admin inserisce
+     * nome/indirizzo/coordinate e configura i punti (1, 2, ...).
+     */
+    public function setupStazione(string $id): \Illuminate\View\View
     {
-        $stazione = DB::table('stazioni')->where('id_stazione', $id)->first();
+        $stazione = DB::table('stazioni')->where('id_stazione', $id)->firstOrFail();
+        $punti = DB::table('punti_ricarica')->where('id_stazione', $id)->orderBy('id_punto')->get();
 
-        if ($stazione->stato_hardware === 'manutenzione_programmata') {
-            // Togliendo la manutenzione, lo stato NON torna automaticamente "online":
-            // soltanto il simulatore MQTT può portare una stazione online inviando
-            // heartbeat/telemetria. Impostiamo quindi "offline" come stato neutro di
-            // attesa, in modo che la mappa rifletta la realtà finché il simulatore
-            // non conferma la connettività della stazione.
-            $nuovoStato = 'offline';
-            $messaggio  = 'Manutenzione terminata. La stazione è ora offline in attesa di heartbeat dal dispositivo.';
-        } else {
-            // Qualsiasi altro stato (online, offline, guasto) → messa in manutenzione.
-            $nuovoStato = 'manutenzione_programmata';
-            $messaggio  = 'Stazione messa in manutenzione programmata.';
-        }
+        return view('admin.stazione-setup', compact('stazione', 'punti'));
+    }
 
-        DB::table('stazioni')->where('id_stazione', $id)->update([
-            'stato_hardware' => $nuovoStato,
+    /**
+     * Completa il setup: salva dati stazione, aggiorna i metadati dei punti
+     * (gia' creati dalla colonnina al momento della registrazione: il numero
+     * di prese e' deciso dall'hardware, l'admin compila solo tipo veicolo,
+     * tipo connettore e potenza). Porta stato_setup='attiva' e pubblica
+     * MQTT stazione/{mac}/ready: solo da li' la colonnina inizia a generare
+     * codici monouso e heartbeat.
+     */
+    public function completaSetupStazione(Request $request, string $id, MqttService $mqtt): \Illuminate\Http\RedirectResponse
+    {
+        $request->validate([
+            'nome'        => 'required|string|max:100',
+            'indirizzo'   => 'nullable|string|max:255',
+            'latitudine'  => 'required|numeric|between:-90,90',
+            'longitudine' => 'required|numeric|between:-180,180',
+            'tipo_area'   => 'required|in:pubblico,privato,aziendale',
+            'punti'       => 'required|array|min:1',
+            'punti.*.tipo_veicolo'    => 'required|in:auto,bici,monopattino',
+            'punti.*.tipo_connettore' => 'nullable|string|max:30',
+            'punti.*.potenza_max_kw'  => 'nullable|numeric|min:0',
         ]);
 
-        return back()->with('success', $messaggio);
+        // Sanity check: il form deve contenere esattamente gli stessi id_punto
+        // gia' presenti a DB (il numero di prese lo decide l'hardware, qui non
+        // si aggiungono ne' si rimuovono). PHP converte le chiavi numeriche
+        // di un array POST a int, mentre id_punto a DB e' VARCHAR: normalizzo
+        // entrambi a string prima del confronto strict.
+        $puntiEsistenti = DB::table('punti_ricarica')->where('id_stazione', $id)
+            ->pluck('id_punto')
+            ->map(fn ($v) => (string) $v)
+            ->sort()
+            ->values()
+            ->all();
+
+        $puntiPosted = collect(array_keys($request->input('punti', [])))
+            ->map(fn ($v) => (string) $v)
+            ->sort()
+            ->values()
+            ->all();
+
+        if ($puntiEsistenti !== $puntiPosted) {
+            return back()->withErrors([
+                'punti' => 'I punti inviati non corrispondono a quelli registrati dalla colonnina.',
+            ])->withInput();
+        }
+
+        DB::transaction(function () use ($request, $id) {
+            DB::table('stazioni')->where('id_stazione', $id)->update([
+                'nome'             => $request->nome,
+                'indirizzo'        => $request->indirizzo,
+                'latitudine'       => $request->latitudine,
+                'longitudine'      => $request->longitudine,
+                'coordinata'       => DB::raw("ST_GeomFromText('POINT({$request->latitudine} {$request->longitudine})')"),
+                'tipo_area'        => $request->tipo_area,
+                'stato_setup'      => 'attiva',
+                'in_manutenzione'  => false,
+                'data_attivazione' => now()->toDateString(),
+            ]);
+
+            foreach ($request->input('punti', []) as $idPunto => $p) {
+                DB::table('punti_ricarica')
+                    ->where('id_stazione', $id)
+                    ->where('id_punto', (string) $idPunto)
+                    ->update([
+                        'tipo_veicolo'    => $p['tipo_veicolo'],
+                        'tipo_connettore' => $p['tipo_connettore'] ?? null,
+                        'potenza_max_kw'  => $p['potenza_max_kw'] ?? null,
+                    ]);
+            }
+        });
+
+        // Avvisa la colonnina che puo' iniziare a funzionare (genera codici, manda heartbeat)
+        try {
+            $puntiCreati = DB::table('punti_ricarica')->where('id_stazione', $id)->orderBy('id_punto')->pluck('id_punto')->all();
+            $mqtt->publish("stazione/{$id}/ready", json_encode([
+                'comando'  => 'READY',
+                'id_punti' => $puntiCreati,
+            ]));
+        } catch (\Throwable $e) {
+            Log::warning('[Admin] publish ready fallito', ['err' => $e->getMessage(), 'id' => $id]);
+        }
+
+        return redirect('/admin/stazioni')->with('success', 'Stazione configurata e attivata.');
+    }
+
+    /**
+     * Toggle manutenzione: aggiorna stazioni.in_manutenzione e PUBLISH MQTT
+     * su stazione/{mac}/manutenzione. La colonnina riceve il messaggio e si
+     * mette offline (smette di pubblicare codice/heartbeat). Quando l'admin
+     * disattiva la manutenzione, manda lo stesso topic con on=false e la
+     * stazione torna a funzionare.
+     */
+    public function toggleStazione(Request $request, string $id, MqttService $mqtt): \Illuminate\Http\RedirectResponse
+    {
+        $stazione = DB::table('stazioni')->where('id_stazione', $id)->first();
+        if (! $stazione) {
+            return back()->with('error', 'Stazione non trovata.');
+        }
+
+        $nuovoStato = ! (bool) $stazione->in_manutenzione;
+
+        DB::table('stazioni')->where('id_stazione', $id)->update([
+            'in_manutenzione' => $nuovoStato,
+        ]);
+
+        // Se entriamo in manutenzione, marchiamo tutti i punti come offline
+        // a DB cosi' la mappa lo riflette immediatamente (senza aspettare il
+        // prossimo heartbeat). Quando usciamo dalla manutenzione lasciamo i
+        // punti offline: torneranno online al primo heartbeat MQTT.
+        if ($nuovoStato) {
+            DB::table('punti_ricarica')
+                ->where('id_stazione', $id)
+                ->update(['stato_hardware' => 'offline']);
+        }
+
+        try {
+            $mqtt->publish("stazione/{$id}/manutenzione", json_encode([
+                'comando' => 'manutenzione',
+                'on'      => $nuovoStato,
+            ]));
+        } catch (\Throwable $e) {
+            Log::warning('[Admin] publish manutenzione fallito', ['err' => $e->getMessage(), 'id' => $id]);
+        }
+
+        $msg = $nuovoStato
+            ? 'Stazione messa in manutenzione e fermata.'
+            : 'Manutenzione terminata. La stazione tornera\' online al prossimo heartbeat.';
+
+        return back()->with('success', $msg);
     }
 }

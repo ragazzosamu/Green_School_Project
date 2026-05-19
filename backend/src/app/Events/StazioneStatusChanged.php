@@ -25,9 +25,13 @@ class StazioneStatusChanged implements ShouldBroadcastNow
      */
     public function broadcastOn(): array
     {
+        // I ":" non sono caratteri validi nei nomi canale Pusher/Reverb:
+        // normalizziamo il MAC (id_stazione) togliendoli.
+        $macNorm = str_replace(':', '', (string) $this->idStazione);
+
         return [
             new Channel('mappa'),
-            new Channel("stazione.{$this->idStazione}"), 
+            new Channel("stazione.{$macNorm}"),
         ];
     }
 

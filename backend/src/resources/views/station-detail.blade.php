@@ -365,26 +365,24 @@
         </div>
     </div>
 
-    <!-- Scanner QR -->
+    <!-- Input codice monouso -->
     <div id="qr-reader-container" class="hidden">
         <div class="qr-card">
             <div class="qr-header">
-                <div class="qr-icon-box">📷</div>
+                <div class="qr-icon-box">#</div>
                 <div>
-                    <p class="qr-title">Scansiona il QR Code</p>
-                    <p class="qr-subtitle">Inquadra il codice sulla presa selezionata</p>
+                    <p class="qr-title">Inserisci codice monouso</p>
+                    <p class="qr-subtitle">6 cifre mostrate sul display della colonnina (un codice per stazione, valido per 60s)</p>
                 </div>
             </div>
 
-            <div class="qr-camera-wrap">
-                <div class="scan-corner sc-tl"></div>
-                <div class="scan-corner sc-tr"></div>
-                <div class="scan-corner sc-bl"></div>
-                <div class="scan-corner sc-br"></div>
-                <div class="scan-line"></div>
-                <div id="reader"></div>
+            <div class="qr-camera-wrap" style="padding:1.5rem;">
+                <input id="codice-input" maxlength="6" inputmode="numeric" autocomplete="one-time-code"
+                       placeholder="------"
+                       style="font-family:monospace;font-size:2rem;letter-spacing:0.6rem;width:100%;text-align:center;padding:0.6rem;">
             </div>
 
+            <button onclick="inviaCodice()" class="scegli-btn" style="width:100%;margin-bottom:0.4rem;">Conferma</button>
             <button onclick="chiudiScanner()" class="qr-cancel-btn">Annulla</button>
         </div>
     </div>
@@ -427,7 +425,7 @@
                     </div>
 
                     @if($isOnline && $isLibera)
-                        <button onclick="apriScanner('{{ $punto->id_punto }}')" class="scegli-btn">
+                        <button onclick="apriInputCodice('{{ $punto->id_punto }}')" class="scegli-btn">
                             Scegli →
                         </button>
                     @endif
@@ -438,93 +436,55 @@
 
 </div>
 
-<script src="https://unpkg.com/html5-qrcode"></script>
-
 <script>
-    let html5QrCode;
     let puntoCorrente = null;
-    //ascoltare su punto.idpunto 
-    //su mappa ascolto il punto.status per vedere se la stazione è libera
 
-    //se
-
-    function apriScanner(idPunto) {
+    function apriInputCodice(idPunto) {
         puntoCorrente = idPunto;
         document.getElementById('qr-reader-container').classList.remove('hidden');
-        
-        html5QrCode = new Html5Qrcode("reader");
-        
-        // TODO EVENTO WEBSOCKET
-        html5QrCode.start(
-            { facingMode: "environment" }, 
-            { fps: 10, qrbox: { width: 200, height: 200 } },
-            (decodedText) => {
-                const parts = decodedText.split(':');
-                const idStazionePagina = "{{ $stazione->id_stazione }}";
-
-                if(parts[0] === 'gs' && parts[1] === idStazionePagina) {
-                    inviaDati(puntoCorrente, parts[2], idStazionePagina); 
-                    chiudiScanner();
-                } else {
-                    alert("Questo QR non corrisponde a questa stazione!");
-                }
-            },
-            (errorMessage) => { }
-        ).catch(err => {
-            console.error("Errore Camera:", err);
-            chiudiScanner();
-        });
+        const inp = document.getElementById('codice-input');
+        inp.value = '';
+        setTimeout(() => inp.focus(), 50);
     }
 
     function chiudiScanner() {
-        if(html5QrCode) {
-            html5QrCode.stop().then(() => {
-                document.getElementById('qr-reader-container').classList.add('hidden');
-            }).catch(err => {
-                document.getElementById('qr-reader-container').classList.add('hidden');
-            });
-        } else {
-            document.getElementById('qr-reader-container').classList.add('hidden');
-        }
+        document.getElementById('qr-reader-container').classList.add('hidden');
     }
 
-    async function inviaDati(idPunto, firma, idStazione) {
+    async function inviaCodice() {
+        const codice = (document.getElementById('codice-input').value || '').trim();
+        if (!/^\d{6}$/.test(codice)) {
+            alert('Inserisci esattamente 6 cifre.');
+            return;
+        }
+
         try {
-            const response = await fetch('/api/scan-qr', {
+            const response = await fetch('/api/verifica-codice', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': 'Bearer {{ session("api_token") }}',
                     'Accept': 'application/json'
                 },
-                body: JSON.stringify({
-                    id_punto: idPunto,
-                    id_stazione: idStazione,
-                    firma: firma
-                })
+                body: JSON.stringify({ codice }),
             });
 
             const data = await response.json();
 
-            // 202 = QR validato, in attesa che l'utente colleghi il cavo.
-            // Niente overlay locale: redirigiamo subito alla pagina personale,
-            // che fa polling sulla sessione attiva dell'utente.
+            // 202 = codice verificato, attesa cavo. Vai al profilo che polla.
             if (response.status === 202) {
-                window.location.href = '/profilo?attesa=' + encodeURIComponent(idPunto);
+                const idPunto    = data.id_punto    || puntoCorrente;
+                const idStazione = data.id_stazione || '{{ $stazione->id_stazione }}';
+                const qs = '?attesa=' + encodeURIComponent(idPunto)
+                         + '&attesa_stazione=' + encodeURIComponent(idStazione);
+                window.location.href = '/profilo' + qs;
                 return;
             }
 
-            // Compatibilita': se l'API rispondesse subito con un session_uuid.
-            if (response.ok && data.session_uuid) {
-                window.location.href = '/session/' + data.session_uuid;
-                return;
-            }
-
-            console.error("Dettaglio Errore:", data);
-            alert("ERRORE: " + (data.message || data.error || JSON.stringify(data)));
+            alert('ERRORE: ' + (data.message || data.error || JSON.stringify(data)));
         } catch (error) {
-            console.error("Errore di rete:", error);
-            alert("Errore di rete: controlla la console.");
+            console.error('Errore di rete:', error);
+            alert('Errore di rete: controlla la console.');
         }
     }
 </script>

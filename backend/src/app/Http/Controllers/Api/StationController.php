@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\Stazioni;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\Cache;
 
 class StationController extends Controller
 {
@@ -23,8 +22,12 @@ class StationController extends Controller
          */
 
         try {
-        // Aggiungiamo makeHidden per escludere il campo problematico dal JSON
-        $stazioni = Stazioni::with('puntiRicarica')->get();
+        // Mostriamo solo le stazioni effettivamente configurate dall'admin.
+        // Quelle 'in_setup' sono appena registrate (MAC noto, ma niente coordinate
+        // ne' punti) e non devono comparire sulla mappa.
+        $stazioni = Stazioni::with('puntiRicarica')
+            ->where('stato_setup', 'attiva')
+            ->get();
 
 
         return response()->json([
@@ -55,18 +58,14 @@ class StationController extends Controller
         */
 
         try {
-            $stazione = Stazioni::with('puntiRicarica')->findOrFail($idStazione);
-
-            $nonce = bin2hex(random_bytes(16));
-            $userId = $request->user()->id_utente;
-            $cacheKey = "scan_nonce:{$userId}:{$idStazione}";
-
-            Cache::put($cacheKey, $nonce, now()->addMinutes(2));
+            $stazione = Stazioni::with('puntiRicarica')
+                ->where('stato_setup', 'attiva')
+                ->findOrFail($idStazione);
 
             return response()->json([
                 'status' => 'success',
                 'data' => $stazione
-            ], 200); 
+            ], 200);
             
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
             return response()->json([

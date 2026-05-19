@@ -22,15 +22,18 @@ class StazioniFactory extends Factory
         $lon = fake()->longitude(11.925, 11.939);
         $scuole = ['ITI Barsanti', 'Liceo Giorgione', 'IPSIA Nightingale', 'Sartor'];
 
+        // id_stazione = MAC ADDRESS fittizio
+        $mac = strtoupper(implode(':', str_split(bin2hex(random_bytes(6)), 2)));
+
         return [
-            'id_stazione' => fake()->unique()->uuid(),
+            'id_stazione' => $mac,
+            'stato_setup' => 'attiva',
             'nome' => 'Stazione ' . fake()->randomElement($scuole),
             'indirizzo' => fake()->streetName() . ', Castelfranco Veneto',
             'latitudine' => $lat,
             'longitudine' => $lon,
             'coordinata' => DB::raw("ST_GeomFromText('POINT($lon $lat)')"),
             'tipo_area' => 'pubblico',
-            'token' => bin2hex(random_bytes(32)),
         ];
     }
 }

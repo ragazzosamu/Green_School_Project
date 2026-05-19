@@ -201,6 +201,7 @@
 
 <div id="session-banner"
      class="session-banner {{ $bannerStato ? 'show ' . $bannerStato : '' }}"
+     data-id-stazione="{{ $sessione_attiva->id_stazione ?? $attesa_stazione ?? '' }}"
      data-id-punto="{{ $sessione_attiva->id_punto ?? $attesa_punto ?? '' }}"
      data-id-sessione="{{ $sessione_attiva->id_sessione ?? '' }}">
     <div id="session-banner-icon" class="session-banner-icon">{{ $bannerIcona }}</div>
@@ -353,9 +354,18 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // BANNER SESSIONE — INVARIATO (non modificato)
 // ─────────────────────────────────────────────────────────────────────────────
-const ID_UTENTE    = @json(Auth::user()?->id_utente);
-const ATTESA_PUNTO = @json($attesa_punto ?? null);
-const API_TOKEN    = @json($api_token ?? '');
+const ID_UTENTE       = @json(Auth::user()?->id_utente);
+const ATTESA_PUNTO    = @json($attesa_punto ?? null);
+const ATTESA_STAZIONE = @json($attesa_stazione ?? null);
+const API_TOKEN       = @json($api_token ?? '');
+
+// id_punto e' locale alla stazione ("1", "2", ...), quindi i canali per-punto
+// devono includere il MAC normalizzato (senza ":") per non collidere fra
+// stazioni diverse. Stesso schema usato lato backend (PuntoStatusChanged).
+function nomeCanalePunto(idStazione, idPunto) {
+    if (!idStazione || !idPunto) return null;
+    return 'punto.' + idStazione.replace(/:/g, '') + '.' + idPunto;
+}
 
 const banner      = document.getElementById('session-banner');
 const bannerIcon  = document.getElementById('session-banner-icon');
@@ -363,7 +373,8 @@ const bannerTitle = document.getElementById('session-banner-title');
 const bannerSub   = document.getElementById('session-banner-sub');
 const bannerCta   = document.getElementById('session-banner-cta');
 
-let idPuntoCorrente    = banner.dataset.idPunto    || ATTESA_PUNTO || null;
+let idStazioneCorrente = banner.dataset.idStazione || ATTESA_STAZIONE || null;
+let idPuntoCorrente    = banner.dataset.idPunto    || ATTESA_PUNTO    || null;
 let idSessioneCorrente = banner.dataset.idSessione || null;
 let kwhCorrenti        = parseFloat(@json((float) ($kwh_attuali ?? 0))) || 0;
 
@@ -394,9 +405,6 @@ try {
 
 if (echo && ID_UTENTE) {
     ascoltaUtente(ID_UTENTE);
-    if (!idSessioneCorrente && idPuntoCorrente) {
-        setTimeout(syncStatoIniziale, 1500);
-    }
 }
 
 // ── Countdown: usa sessionStorage per sopravvivere alla navigazione ──────────
@@ -406,9 +414,10 @@ if (echo && ID_UTENTE) {
 // non viene renderizzato. Soluzione: salviamo id_punto e timestamp in
 // sessionStorage e ricostruiamo il banner lato JS se necessario.
 
-const SK_ATTESA_START = 'gs_attesa_start';
-const SK_ATTESA_PUNTO = 'gs_attesa_punto';
-const TTL_QR = 60; // deve coincidere con SessioneService::TTL_QR_PENDING
+const SK_ATTESA_START    = 'gs_attesa_start';
+const SK_ATTESA_PUNTO    = 'gs_attesa_punto';
+const SK_ATTESA_STAZIONE = 'gs_attesa_stazione';
+const TTL_QR = 60; // deve coincidere con SessioneService::TTL_CODICE_PENDING
 
 let countdownInterval = null;
 
@@ -420,21 +429,27 @@ if (banner.classList.contains('attesa')) {
     if (ATTESA_PUNTO) {
         sessionStorage.setItem(SK_ATTESA_PUNTO, ATTESA_PUNTO);
     }
+    if (ATTESA_STAZIONE) {
+        sessionStorage.setItem(SK_ATTESA_STAZIONE, ATTESA_STAZIONE);
+    }
     avviaORestituisciCountdown();
 
 } else if (!banner.classList.contains('attiva') && !banner.classList.contains('show')) {
     // Banner non mostrato dal PHP: controlla se c'è un'attesa salvata in sessionStorage
-    const puntoInAttesa = sessionStorage.getItem(SK_ATTESA_PUNTO);
+    const puntoInAttesa    = sessionStorage.getItem(SK_ATTESA_PUNTO);
+    const stazioneInAttesa = sessionStorage.getItem(SK_ATTESA_STAZIONE);
     const secondiRimanenti = calcolaSecondiRimanenti();
 
     if (puntoInAttesa && secondiRimanenti > 0) {
         // L'utente era tornato sul profilo senza query param ma l'attesa è ancora valida
-        idPuntoCorrente = puntoInAttesa;
+        idPuntoCorrente    = puntoInAttesa;
+        idStazioneCorrente = stazioneInAttesa;
         ricostruisciBannerAttesa(secondiRimanenti);
         avviaORestituisciCountdown();
         // Ricollegati al canale WS del punto (era perso al cambio pagina)
-        if (echo && puntoInAttesa) {
-            echo.channel('punto.' + puntoInAttesa).listen('.punto.status', (e) => {
+        const canale = nomeCanalePunto(stazioneInAttesa, puntoInAttesa);
+        if (echo && canale) {
+            echo.channel(canale).listen('.punto.status', (e) => {
                 if (e.libera === true || e.libera === 1) { nascondi(); }
             });
         }
@@ -442,6 +457,7 @@ if (banner.classList.contains('attesa')) {
         // Attesa scaduta mentre navigava
         sessionStorage.removeItem(SK_ATTESA_START);
         sessionStorage.removeItem(SK_ATTESA_PUNTO);
+        sessionStorage.removeItem(SK_ATTESA_STAZIONE);
     }
 }
 
@@ -524,22 +540,7 @@ function fermaCountdown() {
     // Pulisco sessionStorage: prenotazione conclusa (con successo o scaduta)
     sessionStorage.removeItem(SK_ATTESA_START);
     sessionStorage.removeItem(SK_ATTESA_PUNTO);
-}
-
-async function syncStatoIniziale() {
-    if (idSessioneCorrente) return;
-    try {
-        const resp = await fetch('/api/me/sessione-attiva', {
-            headers: { 'Authorization': 'Bearer ' + API_TOKEN, 'Accept': 'application/json' },
-        });
-        if (!resp.ok) return;
-        const data = await resp.json();
-        if (data.attiva && data.id_sessione) {
-            idSessioneCorrente = data.id_sessione;
-            kwhCorrenti        = Number(data.kwh_erogati) || 0;
-            mostraAttiva();
-        }
-    } catch (err) { console.warn('[profilo] sync iniziale fallito:', err); }
+    sessionStorage.removeItem(SK_ATTESA_STAZIONE);
 }
 
 function ascoltaUtente(idUtente) {
@@ -547,6 +548,7 @@ function ascoltaUtente(idUtente) {
     ch.listen('.sessione.avviata', (e) => {
         idSessioneCorrente = e.id_sessione;
         idPuntoCorrente    = e.id_punto;
+        idStazioneCorrente = e.id_stazione || idStazioneCorrente;
         kwhCorrenti        = 0;
         mostraAttiva();
     });
@@ -555,8 +557,9 @@ function ascoltaUtente(idUtente) {
         kwhCorrenti += Number(e.cambiamento_kwh) || 0;
         aggiornaKwhUI();
     });
-    if (idPuntoCorrente) {
-        echo.channel('punto.' + idPuntoCorrente).listen('.punto.status', (e) => {
+    const canale = nomeCanalePunto(idStazioneCorrente, idPuntoCorrente);
+    if (canale) {
+        echo.channel(canale).listen('.punto.status', (e) => {
             if (e.libera === true || e.libera === 1) { nascondi(); }
         });
     }
@@ -578,8 +581,10 @@ function nascondi() {
     banner.classList.remove('show', 'attesa', 'attiva');
     idSessioneCorrente = null;
     idPuntoCorrente    = null;
+    idStazioneCorrente = null;
     sessionStorage.removeItem(SK_ATTESA_START);
     sessionStorage.removeItem(SK_ATTESA_PUNTO);
+    sessionStorage.removeItem(SK_ATTESA_STAZIONE);
 }
 // ─────────────────────────────────────────────────────────────────────────────
 // FINE BANNER SESSIONE

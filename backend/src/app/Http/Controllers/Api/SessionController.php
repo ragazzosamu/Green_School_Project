@@ -4,106 +4,97 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Sessioni_ricarica;
+use App\Services\CodiceMonousoService;
 use App\Services\MqttService;
-use App\Services\QrService;
 use App\Services\SessioneService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Flusso d'avvio sessione (QR -> cavo, finestra 60s):
- *  1. Utente scansiona QR -> validiamo nonce e firma.
- *  2. Cache::add('qr_pending:{id_punto}') con TTL 60s. Se un altro utente
- *     ha gia' prenotato lo stesso punto, 409.
- *  3. Comunichiamo alla colonnina "autenticazione_completata" via MQTT.
- *  4. Risposta 202 Attesa_Cavo.
- *  5. Il frontend redirige a /profilo, che fa polling sulla sessione
- *     attiva dell'utente: quando il worker MQTT vede "cavo_collegato"
- *     crea la sessione su DB e il polling la trova.
+ * Flusso d'avvio sessione (codice monouso -> cavo, finestra prenotazione 60s):
+ *  1. La colonnina genera ogni 30s UN codice a 6 cifre per tutta la stazione
+ *     e lo pubblica su stazione/{id_stazione}/codice. MqttWorker lo salva in
+ *     Redis (chiave codice:{id_stazione}, TTL 35s).
+ *  2. L'utente digita il codice nell'app -> POST /api/verifica-codice.
+ *  3. Validiamo con CodiceMonousoService::verifica iterando sulle stazioni
+ *     'attiva': il match ritorna SOLO id_stazione (il punto specifico verra'
+ *     scelto in base a dove l'utente attacca il cavo). Il codice resta in
+ *     Redis per i 35s di TTL anche dopo il match; l'unicita' della
+ *     prenotazione e' garantita dal SETNX su codice_pending:{id_stazione}.
+ *  4. Notifichiamo la stazione via MQTT (stazione/{mac}/comandi) che un
+ *     utente e' stato autorizzato.
+ *  5. Risposta 202: il frontend va in /profilo e fa polling sulla sessione
+ *     attiva dell'utente. Quando il worker MQTT riceve "cavo_collegato" su
+ *     un punto qualsiasi della stazione, consuma il pending e avvia la
+ *     sessione su quel punto specifico.
  */
 class SessionController extends Controller
 {
     public function __construct(
-        private readonly QrService $qrService,
+        private readonly CodiceMonousoService $codici,
         private readonly SessioneService $sessioni,
         private readonly MqttService $mqtt,
     ) {
     }
 
-    public function AutenticazioneQr(Request $request): JsonResponse
+    public function AutenticazioneCodice(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'id_stazione' => ['required', 'string'],
-            'id_punto'    => ['required', 'string'],
-            'firma'       => ['required', 'string', 'size:64'],
+            'codice' => ['required', 'string', 'size:6', 'regex:/^\d{6}$/'],
         ]);
 
-        $userId   = $request->user()->id_utente;
-        $cacheKey = "scan_nonce:{$userId}:{$data['id_stazione']}";
-        $nonce    = Cache::pull($cacheKey);
+        $userId = $request->user()->id_utente;
 
-        Log::info('[NONCE CERCATO]', [
-            'userId'     => $userId,
-            'idStazione' => $data['id_stazione'],
-            'cacheKey'   => $cacheKey,
-        ]);
-
-        if ($nonce === null) {
-            return response()->json(['error' => 'Nonce_invalido'], 422);
+        // Il codice e' unico per stazione: la verifica ritorna solo
+        // l'id_stazione. L'utente collega il cavo a uno qualsiasi dei punti
+        // della stazione e il worker MQTT, al cavo_collegato, sceglie quel
+        // punto specifico per la sessione.
+        $idStazione = $this->codici->verifica($data['codice']);
+        if ($idStazione === null) {
+            return response()->json(['error' => 'Codice non valido o scaduto'], 422);
         }
 
-        if (! $this->qrService->VerificaFirma($data['id_stazione'], $data['firma'])) {
-            return response()->json(['error' => 'Qr_invalido'], 422);
-        }
-
-        // Prenotazione atomica (Cache::add -> SETNX): il primo vince.
-        $prenotato = $this->sessioni->memorizzaQrInAttesa(
-            $data['id_punto'],
-            $userId,
-            $data['id_stazione'],
-        );
-
+        $prenotato = $this->sessioni->memorizzaCodiceInAttesa($idStazione, $userId);
         if (! $prenotato) {
             return response()->json([
-                'error' => 'Punto già prenotato da un altro utente, riprova fra qualche istante.',
+                'error' => 'Stazione gia\' prenotata da un altro utente, riprova fra qualche istante.',
             ], 409);
         }
 
-        // Comunico alla colonnina che l'utente e' autenticato.
+        // autenticazione_completata viene mandato a livello stazione: serve
+        // all'Arduino per sapere che un utente e' stato autorizzato (anche
+        // se non sappiamo ancora su quale punto attaccera' il cavo).
+        // I comandi START/STOP veri e propri sono per-punto e partono dal
+        // worker MQTT al cavo_collegato.
         try {
             $this->mqtt->publish(
-                "stazione/{$data['id_punto']}/comandi",
+                "stazione/{$idStazione}/comandi",
                 json_encode([
-                    'comando'  => 'autenticazione_completata',
-                    'id_punto' => $data['id_punto'],
+                    'comando'     => 'autenticazione_completata',
+                    'id_stazione' => $idStazione,
                 ]),
             );
         } catch (\Throwable $e) {
-            Log::warning('[AutenticazioneQr] publish autenticazione_completata fallito', [
-                'err'      => $e->getMessage(),
-                'id_punto' => $data['id_punto'],
+            Log::warning('[AutenticazioneCodice] publish fallito', [
+                'err' => $e->getMessage(),
+                'id_stazione' => $idStazione,
             ]);
         }
 
         return response()->json([
             'status'              => 'Attesa_Cavo',
-            'reservation_timeout' => SessioneService::TTL_QR_PENDING,
-            'id_punto'            => $data['id_punto'],
+            'reservation_timeout' => SessioneService::TTL_CODICE_PENDING,
+            'id_stazione'         => $idStazione,
         ], 202);
     }
 
-    /**
-     * Interrompe anticipatamente una sessione di ricarica in corso.
-     * Chiude DB (sp_termina_sessione) + invia STOP via MQTT alla colonnina.
-     */
     public function InterrompiSessione(string $id_sessione, Request $request): JsonResponse
     {
         $sessione = Sessioni_ricarica::findOrFail($id_sessione);
 
         if ($sessione->data_fine !== null) {
-            return response()->json(['error' => 'Sessione già conclusa'], 409);
+            return response()->json(['error' => 'Sessione gia\' conclusa'], 409);
         }
 
         $userId = $request->user()->id_utente;
@@ -111,8 +102,6 @@ class SessionController extends Controller
             return response()->json(['error' => 'Non autorizzato a interrompere questa sessione'], 403);
         }
 
-        // I kWh totali della sessione in corso vivono in Redis (il DB resta a 0
-        // finche' sp_termina_sessione non scrive il valore finale).
         $kwh = $this->sessioni->kwhCorrenti($sessione->id_sessione);
         $esito = $this->sessioni->termina($sessione->id_sessione, $kwh);
 
@@ -123,18 +112,19 @@ class SessionController extends Controller
 
         try {
             $this->mqtt->publish(
-                "stazione/{$sessione->id_punto}/comandi",
+                "stazione/{$sessione->id_stazione}/{$sessione->id_punto}/comandi",
                 json_encode(['comando' => 'STOP', 'id_sessione' => $sessione->id_sessione]),
             );
         } catch (\Throwable $e) {
             Log::warning('[InterrompiSessione] publish STOP fallito', ['err' => $e->getMessage()]);
         }
 
-        $this->sessioni->pulisciStatoRendezVous($sessione->id_punto);
+        $this->sessioni->pulisciStatoRendezVous($sessione->id_stazione);
 
         return response()->json([
             'status'      => 'sessione_chiusa',
             'id_sessione' => $sessione->id_sessione,
+            'id_stazione' => $sessione->id_stazione,
             'id_punto'    => $sessione->id_punto,
             'kwh_totali'  => $kwh,
             'costo'       => $esito['costo'] ?? 0,
@@ -146,9 +136,6 @@ class SessionController extends Controller
         $sessione       = Sessioni_ricarica::findOrFail($id_sessione);
         $tempoTrascorso = now()->diffInMinutes($sessione->data_inizio);
 
-        // Per le sessioni ATTIVE i kWh stanno in Redis (DB e' 0 fino alla
-        // chiusura). Per le sessioni CHIUSE Redis e' stato pulito e il valore
-        // definitivo e' su DB.
         $kwh = $sessione->data_fine === null
             ? $this->sessioni->kwhCorrenti($sessione->id_sessione)
             : (float) ($sessione->quantita_kwh ?? 0);
@@ -159,11 +146,6 @@ class SessionController extends Controller
         ]);
     }
 
-    /**
-     * Endpoint usato dal polling della pagina /profilo per scoprire se
-     * l'utente loggato ha una sessione di ricarica attiva.
-     * Risposta sempre 200 con { attiva: bool, id_sessione?, id_punto?, kwh_erogati? }.
-     */
     public function SessioneAttivaUtente(Request $request): JsonResponse
     {
         $userId = $request->user()->id_utente;
@@ -180,8 +162,8 @@ class SessionController extends Controller
         return response()->json([
             'attiva'      => true,
             'id_sessione' => $sessione->id_sessione,
+            'id_stazione' => $sessione->id_stazione,
             'id_punto'    => $sessione->id_punto,
-            // Letto da Redis: rispecchia lo stato vero in tempo reale, non lo 0 del DB
             'kwh_erogati' => $this->sessioni->kwhCorrenti($sessione->id_sessione),
             'data_inizio' => $sessione->data_inizio,
         ], 200);

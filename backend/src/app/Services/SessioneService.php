@@ -32,10 +32,11 @@ class SessioneService
      *
      * @return array{ok:bool, id_sessione?:string, messaggio?:string}
      */
-    public function avvia(string $idPunto, string $idUtente, string $idStazione, string $metodo = 'QR_CODE'): array
+    public function avvia(string $idStazione, string $idPunto, string $idUtente, string $metodo = 'CODICE'): array
     {
-        DB::statement('CALL sp_avvio_sessione(?, ?, ?, ?, @id_sessione, @successo, @messaggio)', [
+        DB::statement('CALL sp_avvio_sessione(?, ?, ?, ?, ?, @id_sessione, @successo, @messaggio)', [
             $idUtente,
+            $idStazione,
             $idPunto,
             $metodo,
             null,
@@ -47,21 +48,17 @@ class SessioneService
             return ['ok' => false, 'messaggio' => $result->messaggio];
         }
 
-        // Notifica WS (best-effort, il flusso non dipende da questo)
-        SessioneAvviata::dispatch($result->id, $idPunto, $idUtente);
-
-        // Broadcast stato punto (ora occupato)
+        SessioneAvviata::dispatch($result->id, $idPunto, $idUtente, $idStazione);
         PuntoStatusChanged::dispatch($idPunto, false, $idStazione);
 
-        // Eventuale broadcast stazione se è diventata completamente occupata
-        $statoStazione = Stazioni::statoAggregatoPerPunto($idPunto);
+        $statoStazione = Stazioni::statoAggregatoPerPunto($idStazione, $idPunto);
         if ($statoStazione && (int) $statoStazione->liberi === 0) {
             StazioneStatusChanged::dispatch($idStazione, false);
         }
 
-        // Comando START verso la colonnina
+        // Comando START verso il punto specifico della stazione
         $this->mqtt->publish(
-            "stazione/{$idPunto}/comandi",
+            "stazione/{$idStazione}/{$idPunto}/comandi",
             json_encode(['comando' => 'START', 'id_sessione' => $result->id]),
         );
 
@@ -86,16 +83,16 @@ class SessioneService
             return ['ok' => false];
         }
 
-        $row = DB::table('sessioni_ricarica as s')
-            ->join('punti_ricarica as p', 'p.id_punto', '=', 's.id_punto')
-            ->where('s.id_sessione', $idSessione)
-            ->selectRaw('s.id_utente, s.id_punto, p.id_stazione')
+        $row = DB::table('sessioni_ricarica')
+            ->where('id_sessione', $idSessione)
+            ->select('id_utente', 'id_stazione', 'id_punto')
             ->first();
-            $this->gamification->aggiorna($idSessione, $row->id_utente, $kwhTotali);
+
         if ($row) {
+            $this->gamification->aggiorna($idSessione, $row->id_utente, $kwhTotali);
             PuntoStatusChanged::dispatch($row->id_punto, true, $row->id_stazione);
 
-            $statoStazione = Stazioni::statoAggregatoPerPunto($row->id_punto);
+            $statoStazione = Stazioni::statoAggregatoPerPunto($row->id_stazione, $row->id_punto);
             if ($statoStazione && (int) $statoStazione->liberi > 0) {
                 StazioneStatusChanged::dispatch($row->id_stazione, true);
             }
@@ -108,36 +105,35 @@ class SessioneService
         return ['ok' => true, 'costo' => (float) $result->costo];
     }
 
-    // ---- Helpers per il rendez-vous QR -> cavo (60s) -----------------------
+    // ---- Helpers per il rendez-vous codice -> cavo (60s) -----------------------
 
-    public const TTL_QR_PENDING = 60;
+    public const TTL_CODICE_PENDING = 60;
 
-    public static function qrPendingKey(string $idPunto): string
+    // Il codice e' UNICO per stazione: il pending si tiene a livello stazione,
+    // non per punto. Quando arriva il cavo_collegato su (stazione, qualsiasi
+    // punto) il rendez-vous matcha e la sessione si avvia su quel punto.
+    public static function codicePendingKey(string $idStazione): string
     {
-        return "qr_pending:{$idPunto}";
+        return "codice_pending:{$idStazione}";
     }
 
-    /**
-     * Prenota il punto per questo utente per i prossimi 60s in attesa del
-     * cavo_collegato. Ritorna true SOLO se nessun altro aveva gia' prenotato.
-     */
-    public function memorizzaQrInAttesa(string $idPunto, string $idUtente, string $idStazione): bool
+    public function memorizzaCodiceInAttesa(string $idStazione, string $idUtente): bool
     {
         return Cache::add(
-            self::qrPendingKey($idPunto),
+            self::codicePendingKey($idStazione),
             ['id_utente' => $idUtente, 'id_stazione' => $idStazione],
-            self::TTL_QR_PENDING,
+            self::TTL_CODICE_PENDING,
         );
     }
 
-    public function consumaQrInAttesa(string $idPunto): ?array
+    public function consumaCodiceInAttesa(string $idStazione): ?array
     {
-        return Cache::pull(self::qrPendingKey($idPunto));
+        return Cache::pull(self::codicePendingKey($idStazione));
     }
 
-    public function pulisciStatoRendezVous(string $idPunto): void
+    public function pulisciStatoRendezVous(string $idStazione): void
     {
-        Cache::forget(self::qrPendingKey($idPunto));
+        Cache::forget(self::codicePendingKey($idStazione));
     }
 
     // ---- kWh corrente della sessione (cache Redis) -------------------------
@@ -193,9 +189,10 @@ class SessioneService
             ->value('id_sessione');
     }
 
-    public function sessioneAttivaPerPunto(string $idPunto): ?string
+    public function sessioneAttivaPerPunto(string $idStazione, string $idPunto): ?string
     {
         return DB::table('sessioni_ricarica')
+            ->where('id_stazione', $idStazione)
             ->where('id_punto', $idPunto)
             ->whereNull('data_fine')
             ->orderByDesc('data_inizio')

@@ -18,15 +18,24 @@ class Stazioni extends Model
     public $timestamps = false;
 
     protected $fillable = [
-    'id_stazione', 
-    'nome', 
-    'indirizzo', 
-    'latitudine', 
-    'longitudine', 
-    'coordinata', // <--- Deve esserci questo!
-    'tipo_area', 
-    'data_attivazione'
-]; //info generali sulla stazione: il nome della zona e le coordinate geografiche per trovarla sulla mappa
+        'id_stazione',
+        'password_hash',
+        'stato_setup',
+        'nome',
+        'indirizzo',
+        'latitudine',
+        'longitudine',
+        'coordinata',
+        'tipo_area',
+        'data_attivazione',
+        'libera',
+        'data_ultimo_heartbeat',
+        'in_manutenzione',
+    ];
+
+    protected $casts = [
+        'in_manutenzione' => 'boolean',
+    ]; //info generali sulla stazione: il nome della zona e le coordinate geografiche per trovarla sulla mappa
 
 
     protected function coordinata(): Attribute
@@ -72,13 +81,11 @@ class Stazioni extends Model
      *                     oppure null se il punto non esiste nel database
      */
     
-    public static function statoAggregatoPerPunto(string $idPunto): ?object
+    public static function statoAggregatoPerPunto(string $idStazione, string $idPunto = null): ?object
     {
-        $idStazione = DB::table('punti_ricarica')
-            ->where('id_punto', $idPunto)
-            ->value('id_stazione');
-
-        if (!$idStazione) return null;
+        // Retrocompat: se chiamata con un solo argomento, era l'id_punto vecchio;
+        // ora servono entrambi (id_stazione, id_punto).
+        if ($idPunto === null) return null;
 
         return DB::table('punti_ricarica')
             ->where('id_stazione', $idStazione)

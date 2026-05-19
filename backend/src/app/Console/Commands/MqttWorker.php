@@ -8,18 +8,18 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
+use App\Services\CodiceMonousoService;
 use App\Services\MqttService;
 use App\Services\SessioneService;
-use App\Models\Punti_ricarica;
-use App\Events\TelemetriaRicevuta;
 
 #[Signature('mqtt:leggi')]
-#[Description('Funziona in background e ascolta se ci sono aggiornamenti sui topic mqtt')]
+#[Description('Worker MQTT: ascolta gli aggiornamenti delle colonnine sui topic stazione/{id_stazione}/{id_punto}/{canale}.')]
 class MqttWorker extends Command
 {
     public function __construct(
         private readonly MqttService $mqttService,
         private readonly SessioneService $sessioni,
+        private readonly CodiceMonousoService $codici,
     ) {
         parent::__construct();
     }
@@ -27,28 +27,56 @@ class MqttWorker extends Command
     public function handle()
     {
         try {
-            // UNA sola subscribe con wildcard a due livelli, poi smistiamo
-            // in base al topic. Evita problemi di multi-subscribe della libreria.
-            $this->mqttService->subscribe('stazione/+/+', function ($topic, $message) {
-                $parts    = explode('/', $topic);
-                $id_punto = $parts[1] ?? null;
-                $canale   = $parts[2] ?? null;
-
-                if (! $id_punto || ! $canale) return;
+            // Una sola subscribe wildcard "stazione/#" che cattura tutto e poi
+            // smista in base al numero di livelli del topic:
+            //   stazione/{mac}/codice                 -> 3 livelli, station-wide
+            //   stazione/{mac}/comandi                -> 3 livelli, pubblicato da noi (ignora)
+            //   stazione/{mac}/ready                  -> 3 livelli, pubblicato da noi (ignora)
+            //   stazione/{mac}/{id_punto}/{canale}    -> 4 livelli, per-punto
+            // Evita problemi che alcune versioni della libreria PHP-MQTT hanno
+            // con due subscribe sovrapposte sullo stesso client.
+            $this->mqttService->subscribe('stazione/#', function ($topic, $message) {
+                $parts = explode('/', $topic);
 
                 $data = json_decode($message, true);
                 if (json_last_error() !== JSON_ERROR_NONE) {
-                    $this->error("Errore: Ricevuto messaggio non JSON su $topic");
+                    $this->error("Errore: messaggio non JSON su $topic");
                     return;
                 }
 
-                match ($canale) {
-                    'telemetria' => $this->gestisciTelemetria($id_punto, $data),
-                    'eventi'     => $this->gestisciEvento($id_punto, $data, $topic),
-                    'heartbeat'  => $this->gestisciHeartbeat($id_punto, $data),
-                    'comandi'    => null, // li pubblichiamo noi, non li consumiamo
-                    default      => $this->warn("Canale sconosciuto '$canale' su $topic"),
-                };
+                // stazione/{mac}/{canale}   (station-wide)
+                if (count($parts) === 3) {
+                    $idStazione = $parts[1] ?? null;
+                    $canale     = $parts[2] ?? null;
+                    if (! $idStazione || ! $canale) return;
+
+                    match ($canale) {
+                        'codice'  => $this->gestisciCodice($idStazione, $data),
+                        'comandi' => null, // li pubblichiamo noi
+                        'ready'   => null, // pubblicato noi
+                        default   => $this->warn("Canale station-wide sconosciuto '$canale' su $topic"),
+                    };
+                    return;
+                }
+
+                // stazione/{mac}/{id_punto}/{canale}   (per-punto)
+                if (count($parts) === 4) {
+                    $idStazione = $parts[1] ?? null;
+                    $idPunto    = $parts[2] ?? null;
+                    $canale     = $parts[3] ?? null;
+                    if (! $idStazione || ! $idPunto || ! $canale) return;
+
+                    match ($canale) {
+                        'telemetria' => $this->gestisciTelemetria($idStazione, $idPunto, $data),
+                        'eventi'     => $this->gestisciEvento($idStazione, $idPunto, $data, $topic),
+                        'heartbeat'  => $this->gestisciHeartbeat($idStazione, $idPunto, $data),
+                        'comandi'    => null, // li pubblichiamo noi
+                        default      => $this->warn("Canale per-punto sconosciuto '$canale' su $topic"),
+                    };
+                    return;
+                }
+
+                $this->warn("Topic con numero di livelli inatteso: $topic");
             });
 
             $this->mqttService->loop();
@@ -61,16 +89,16 @@ class MqttWorker extends Command
         return self::SUCCESS;
     }
 
-    /**
-     * Riceve telemetria grezza dal simulatore (V, I, intervallo) e:
-     *  1. calcola il delta kWh: (V * I / 1000) * (intervallo / 3600)
-     *  2. accumula il totale corrente in Redis (Cache::put su chiave
-     *     sessione_kwh:{id}). Cosi' se l'utente fa refresh / cambia pagina
-     *     ritrova il valore esatto. Il DB resta a 0 finche' la sessione non
-     *     viene chiusa (sp_termina_sessione scrive il totale finale).
-     *  3. dispatcha TelemetriaRicevuta per l'aggiornamento live del browser.
-     */
-    private function gestisciTelemetria(string $idPunto, array $data): void
+    private function gestisciCodice(string $idStazione, array $data): void
+    {
+        $codice = (string) ($data['codice'] ?? '');
+        if ($codice === '') return;
+
+        $this->codici->memorizza($idStazione, $codice);
+        $this->comment("Codice $codice memorizzato per stazione $idStazione");
+    }
+
+    private function gestisciTelemetria(string $idStazione, string $idPunto, array $data): void
     {
         $idSessione = $data['id_sessione']    ?? null;
         $voltaggio  = (float) ($data['voltaggio']      ?? 0);
@@ -78,16 +106,12 @@ class MqttWorker extends Command
         $intervallo = (float) ($data['intervallo_sec'] ?? 0);
 
         if (! $idSessione || $intervallo <= 0) {
-            $this->comment("Telemetria scartata: dati insufficienti ($idSessione, V=$voltaggio, I=$corrente, Δt=$intervallo)");
+            $this->comment("Telemetria scartata: dati insufficienti");
             return;
         }
 
-        // Formula classica: kWh = potenza(kW) * tempo(h)
-        //   potenza_kw = V * I / 1000
-        //   tempo_h    = intervallo / 3600
         $deltaKwh = ($voltaggio * $corrente / 1000.0) * ($intervallo / 3600.0);
 
-        // Lookup utente per indirizzare l'evento sul canale privato corretto
         $idUtente = DB::table('sessioni_ricarica')
             ->where('id_sessione', $idSessione)
             ->value('id_utente');
@@ -97,90 +121,80 @@ class MqttWorker extends Command
             return;
         }
 
-        // Accumulo su Redis: read-modify-write. Il worker e' l'unico writer
-        // di questa chiave, quindi non serve un lock.
         $totaleAggiornato = $this->sessioni->aggiungiKwh($idSessione, $deltaKwh);
 
         $this->info(sprintf(
-            '-> Telemetria %s: V=%.1fV I=%.2fA Δt=%.0fs Δkwh=%.4f totale=%.4f',
-            $idPunto, $voltaggio, $corrente, $intervallo, $deltaKwh, $totaleAggiornato
+            '-> Telemetria %s/%s: V=%.1fV I=%.2fA Δt=%.0fs Δkwh=%.4f totale=%.4f',
+            $idStazione, $idPunto, $voltaggio, $corrente, $intervallo, $deltaKwh, $totaleAggiornato
         ));
 
-        TelemetriaRicevuta::dispatch($idPunto, $deltaKwh, $idSessione, $idUtente);
+        \App\Events\TelemetriaRicevuta::dispatch($idPunto, $deltaKwh, $idSessione, $idUtente);
     }
 
-    private function gestisciHeartbeat(string $idPunto, array $data): void
+    private function gestisciHeartbeat(string $idStazione, string $idPunto, array $data): void
     {
-        $this->comment("Heartbeat punto $idPunto");
-
         $ts = isset($data['ts']) && is_numeric($data['ts'])
             ? Carbon::createFromTimestamp((int) $data['ts'])
             : now();
 
-        Punti_ricarica::where('id_punto', $idPunto)
+        DB::table('punti_ricarica')
+            ->where('id_stazione', $idStazione)
+            ->where('id_punto', $idPunto)
+            ->update(['data_ultimo_heartbeat' => $ts]);
+
+        DB::table('stazioni')
+            ->where('id_stazione', $idStazione)
             ->update(['data_ultimo_heartbeat' => $ts]);
     }
 
-    private function gestisciEvento(string $idPunto, array $data, string $topic): void
+    private function gestisciEvento(string $idStazione, string $idPunto, array $data, string $topic): void
     {
-        $this->info("Evento da punto $idPunto: " . json_encode($data));
-
+        $this->info("Evento da $idStazione/$idPunto: " . json_encode($data));
         $evento = $data['evento'] ?? null;
 
         match ($evento) {
-            'cavo_collegato'  => $this->gestisciCavoCollegato($idPunto),
-            'cavo_scollegato' => $this->gestisciFineSessione($idPunto, $data, 'cavo_scollegato'),
-            'batteria_piena'  => $this->gestisciFineSessione($idPunto, $data, 'batteria_piena'),
+            'cavo_collegato'  => $this->gestisciCavoCollegato($idStazione, $idPunto),
+            'cavo_scollegato' => $this->gestisciFineSessione($idStazione, $idPunto, $data, 'cavo_scollegato'),
+            'batteria_piena'  => $this->gestisciFineSessione($idStazione, $idPunto, $data, 'batteria_piena'),
             default           => $this->warn("Evento sconosciuto '$evento' su $topic"),
         };
     }
 
-    /**
-     * Flusso unico: se trovo un qr_pending (utente ha scansionato QR negli
-     * ultimi 60s) avvio la sessione, altrimenti ignoro (il cavo va collegato
-     * DOPO la scansione).
-     */
-    private function gestisciCavoCollegato(?string $idPunto): void
+    private function gestisciCavoCollegato(string $idStazione, string $idPunto): void
     {
-        if (! $idPunto) return;
+        // Il pending e' a livello stazione: chiunque colleghi un cavo su un
+        // qualsiasi punto della stazione consuma il pending e avvia la
+        // sessione sul punto fisico scelto.
+        $pending = $this->sessioni->consumaCodiceInAttesa($idStazione);
 
-        $qrPending = $this->sessioni->consumaQrInAttesa($idPunto);
-
-        if ($qrPending === null) {
-            $this->comment("Cavo collegato su $idPunto ma nessun QR in attesa: ignorato.");
+        if ($pending === null) {
+            $this->comment("Cavo collegato su $idStazione/$idPunto ma nessun codice in attesa: ignorato.");
             return;
         }
 
-        $this->info("-> QR gia' scansionato per $idPunto, avvio sessione.");
-        $esito = $this->sessioni->avvia(
-            $idPunto,
-            $qrPending['id_utente'],
-            $qrPending['id_stazione'],
-        );
+        $this->info("-> Codice gia' verificato per stazione $idStazione, avvio sessione su punto $idPunto.");
+        $esito = $this->sessioni->avvia($idStazione, $idPunto, $pending['id_utente']);
 
         if (! $esito['ok']) {
             Log::warning('[MQTT Worker] avvio sessione fallito', [
-                'id_punto' => $idPunto,
-                'msg'      => $esito['messaggio'] ?? '',
+                'id_stazione' => $idStazione,
+                'id_punto'    => $idPunto,
+                'msg'         => $esito['messaggio'] ?? '',
             ]);
-            $this->error("Avvio sessione fallito: " . ($esito['messaggio'] ?? '?'));
         }
     }
 
-    private function gestisciFineSessione(?string $idPunto, array $data, string $motivo): void
+    private function gestisciFineSessione(string $idStazione, string $idPunto, array $data, string $motivo): void
     {
-        if (! $idPunto) return;
+        $this->sessioni->pulisciStatoRendezVous($idStazione);
 
-        $this->sessioni->pulisciStatoRendezVous($idPunto);
-
-        $idSessione = $data['id_sessione'] ?? $this->sessioni->sessioneAttivaPerPunto($idPunto);
+        $idSessione = $data['id_sessione'] ?? $this->sessioni->sessioneAttivaPerPunto($idStazione, $idPunto);
         if (! $idSessione) {
-            $this->comment("Nessuna sessione attiva su $idPunto al momento di '$motivo'.");
+            $this->comment("Nessuna sessione attiva su $idStazione/$idPunto al momento di '$motivo'.");
             return;
         }
 
         $kwh = $this->sessioni->kwhCorrenti($idSessione);
-
         $esito = $this->sessioni->termina($idSessione, $kwh);
 
         if (! $esito['ok']) {

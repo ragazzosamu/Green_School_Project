@@ -32,7 +32,7 @@ class AdminSeeder extends Seeder
         DB::table('utenti')->insert([
             'id_utente'    => Str::uuid()->toString(),
             'email'        => $email,
-            'password'     => Hash::make('Admin@GreenSchool2026'),
+            'password'     => Hash::make('password123'),
             'nome'         => 'Admin',
             'cognome'      => 'GreenSchool',
             'cellulare'    => '0000000000',

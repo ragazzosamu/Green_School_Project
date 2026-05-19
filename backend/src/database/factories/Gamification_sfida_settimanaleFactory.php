@@ -24,7 +24,7 @@ class Gamification_sfida_settimanaleFactory extends Factory
             'codice_sfida' => $this->faker->randomElement([
                 'RICARICHE_5_SETTIMANA',
                 'CO2_RISPARMIATA_10KG',
-                'NOTTURNO_GREEN_3',
+                'KWH_50_SETTIMANA',
                 'STREAK_7_GIORNI',
             ]),
             'target'      => $target,

@@ -16,7 +16,7 @@ use Illuminate\Support\Facades\Log;
  * NON usa WebSocket: il frontend aggiorna il profilo tramite il tasto "Aggiorna".
  *
  * Responsabilità:
- *  1. Calcolare XP guadagnati dalla sessione (formula: kWh × 10, +bonus notturno)
+ *  1. Calcolare XP guadagnati dalla sessione (formula: kWh × 10)
  *  2. Calcolare CO₂ risparmiata (0.233 kg CO₂ per kWh — fattore ISPRA)
  *  3. Aggiornare streak giorni consecutivi
  *  4. Persistere tutto su gamification_profilo_utente
@@ -28,9 +28,6 @@ class GamificationService
 
     /** XP per ogni kWh erogato */
     private const XP_PER_KWH = 10;
-
-    /** Bonus XP per ricarica notturna (22:00–06:00) */
-    private const XP_BONUS_NOTTURNO = 20;
 
     /**
      * kg CO₂ risparmiata per ogni kWh ricaricato rispetto a un veicolo termico.
@@ -50,7 +47,7 @@ class GamificationService
      */
     public function aggiorna(string $idSessione, string $idUtente, float $kwhTotali): array
     {
-        // Recupero la sessione per sapere l'orario di inizio (badge notturno, streak)
+        // Recupero la sessione per sapere l'orario di inizio (streak)
         $sessione = Sessioni_ricarica::find($idSessione);
 
         if (! $sessione) {
@@ -59,8 +56,7 @@ class GamificationService
         }
 
         // 1. Calcola XP e CO₂
-        $isNotturna   = $this->isRicaricaNotturna($sessione->data_inizio);
-        $xpGuadagnati = $this->calcolaXp($kwhTotali, $isNotturna);
+        $xpGuadagnati = $this->calcolaXp($kwhTotali);
         $co2Aggiunta  = round($kwhTotali * self::CO2_KG_PER_KWH, 3);
 
         // 2. Aggiorna (o crea) il profilo in modo atomico con una singola query
@@ -91,32 +87,12 @@ class GamificationService
 
     // ── Logica XP ─────────────────────────────────────────────────────────────
 
-    private function calcolaXp(float $kwhTotali, bool $isNotturna): int
+    private function calcolaXp(float $kwhTotali): int
     {
         $xp = (int) round($kwhTotali * self::XP_PER_KWH);
 
-        if ($isNotturna) {
-            $xp += self::XP_BONUS_NOTTURNO;
-        }
-
         // XP minimi garantiti per ogni sessione (anche se kWh = 0)
         return max($xp, 5);
-    }
-
-    /**
-     * Una ricarica è "notturna" se inizia tra le 22:00 e le 06:00.
-     */
-    private function isRicaricaNotturna(mixed $dataInizio): bool
-    {
-        if (! $dataInizio) {
-            return false;
-        }
-
-        $ora = is_string($dataInizio)
-            ? (int) date('H', strtotime($dataInizio))
-            : (int) $dataInizio->format('H');
-
-        return $ora >= 22 || $ora < 6;
     }
 
     // ── Aggiornamento profilo ─────────────────────────────────────────────────
@@ -251,9 +227,11 @@ class GamificationService
      * Valuta la regola JSON del badge rispetto allo stato corrente dell'utente.
      *
      * Tipi supportati (matching con il seeder):
-     *  - conteggio_sessioni         → numero totale di sessioni completate
-     *  - soglia_co2                 → co2_risparmiata_kg cumulativa
-     *  - conteggio_sessioni_fascia  → sessioni in fascia oraria notturna (22-06)
+     *  - conteggio_sessioni   → numero totale di sessioni completate
+     *  - soglia_kwh_totali    → kWh totali ricaricati (somma quantita_kwh)
+     *  - soglia_co2           → co2_risparmiata_kg cumulativa
+     *  - streak_giorni        → streak corrente
+     *  - livello_minimo       → livello raggiunto dal profilo
      */
     private function verificaCondizione(
         array                       $condizione,
@@ -271,9 +249,14 @@ class GamificationService
                 ->whereNotNull('data_fine')
                 ->count(),
 
-            'soglia_co2' => (float) $profilo->co2_risparmiata_kg,
+            'soglia_kwh_totali' => (float) DB::table('sessioni_ricarica')
+                ->where('id_utente', $idUtente)
+                ->whereNotNull('data_fine')
+                ->sum('quantita_kwh'),
 
-            'conteggio_sessioni_fascia' => $this->contaSessioniNotturne($idUtente),
+            'soglia_co2'     => (float) $profilo->co2_risparmiata_kg,
+            'streak_giorni'  => (int)   $profilo->streak_giorni,
+            'livello_minimo' => (int)   $profilo->livello,
 
             default => null,
         };
@@ -291,21 +274,6 @@ class GamificationService
             '<'     => $valoreReale <  $valore,
             default => false,
         };
-    }
-
-    /**
-     * Conta le sessioni dell'utente che iniziano in fascia 22:00–06:00.
-     */
-    private function contaSessioniNotturne(string $idUtente): int
-    {
-        return DB::table('sessioni_ricarica')
-            ->where('id_utente', $idUtente)
-            ->whereNotNull('data_fine')
-            ->where(function ($q) {
-                $q->whereRaw('HOUR(data_inizio) >= 22')
-                  ->orWhereRaw('HOUR(data_inizio) < 6');
-            })
-            ->count();
     }
 
     /**

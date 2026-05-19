@@ -22,6 +22,7 @@ class SessioneAvviata implements ShouldBroadcastNow
         public string $idSessione,
         public string $idPunto,
         public string $idUtente,
+        public ?string $idStazione = null,
     ) {}
 
     public function broadcastAs(): string
@@ -40,6 +41,7 @@ class SessioneAvviata implements ShouldBroadcastNow
     {
         return [
             'id_sessione' => $this->idSessione,
+            'id_stazione' => $this->idStazione,
             'id_punto'    => $this->idPunto,
             // id_utente non serve nel payload: chi riceve l'evento
             // sul canale privato e' gia' l'utente in questione.

@@ -92,7 +92,10 @@ Route::get('/profilo', function (Request $request) {
 
     return view('gamification-profile', [
         'api_token'       => session('api_token'),
-        // ?attesa=<id_punto> arriva da /stazione/{id} dopo scan QR riuscito.
+        // ?attesa_stazione=<mac>&attesa=<id_punto> arrivano da /stazione/{id}
+        // dopo /api/verifica-codice riuscito. id_punto e' locale alla stazione,
+        // serve anche la stazione per ricostruire il canale WebSocket.
+        'attesa_stazione' => $request->query('attesa_stazione'),
         'attesa_punto'    => $request->query('attesa'),
         'sessione_attiva' => $sessioneAttiva,
         'kwh_attuali'     => $kwhAttuali,
@@ -111,5 +114,7 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->group(function () {
     Route::post('/utenti/{id}/reset',            [AdminController::class, 'resetPassword']);
     Route::get('/sessioni',                      [AdminController::class, 'sessioni']);
     Route::get('/stazioni',                      [AdminController::class, 'stazioni']);
+    Route::get('/stazioni/{id}/setup',           [AdminController::class, 'setupStazione']);
+    Route::post('/stazioni/{id}/setup',          [AdminController::class, 'completaSetupStazione']);
     Route::post('/stazioni/{id}/toggle',         [AdminController::class, 'toggleStazione']);
 });

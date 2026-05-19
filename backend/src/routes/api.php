@@ -12,6 +12,9 @@ use App\Http\Controllers\Api\GamificationController;
 // Rotta pubblica per login da dispositivi esterni (Postman/Python)
 Route::post('/login', [AuthController::class, 'login']);
 
+// Registrazione colonnina IoT (pubblica, protetta da password globale + MAC)
+Route::post('/iot/registra', [IotController::class, 'Registra']);
+
 // Tutte le rotte che richiedono il Token Sanctum
 Route::middleware('auth:sanctum')->group(function () {
 
@@ -29,8 +32,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/gamification/leaderboard', [GamificationController::class, 'leaderboard']);
     Route::get('/gamification/sessioni',    [GamificationController::class, 'sessioni']);
 
-    // Avvio sessione (gestisce rendez-vous QR -> cavo, finestra 60s)
-    Route::post('/scan-qr', [SessionController::class, 'AutenticazioneQr']);
+    // Avvio sessione tramite codice monouso a 6 cifre generato dalla colonnina
+    // (rendez-vous codice -> cavo, finestra 60s)
+    Route::post('/verifica-codice', [SessionController::class, 'AutenticazioneCodice']);
 
     // Polling: ha l'utente loggato una sessione attiva in questo momento?
     Route::get('/me/sessione-attiva', [SessionController::class, 'SessioneAttivaUtente']);
@@ -42,8 +46,5 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
 });
 
-// Rotte IoT (ESP32 / simulatore) — autenticate tramite X-Device-Token
-Route::middleware('device.token')->group(function () {
-    Route::post('/heartbeat_punto', [IotController::class, 'Heartbeat']);
-    Route::post('/{id_punto}/termina_sessione', [IotController::class, 'TerminaSessione']);
-});
+// Nota: heartbeat e fine sessione passano da MQTT (worker mqtt:leggi), non
+// da HTTP. Non c'e' piu' un endpoint device-autenticato per la colonnina.
