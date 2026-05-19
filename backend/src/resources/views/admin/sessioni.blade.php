@@ -9,6 +9,38 @@
         <p style="font-size:0.78rem;color:var(--text-3);margin-top:2px;">{{ $sessioni->total() }} sessioni totali</p>
     </div>
 </div>
+{{-- NUOVO PANNELLO ESTRATTORE REPORT (PER UTENTE O PER DATA) --}}
+<div style="background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:1.25rem; margin-bottom:1.5rem; box-shadow:var(--shadow-sm);">
+    <p style="font-size:0.65rem; font-weight:700; letter-spacing:0.09em; text-transform:uppercase; color:var(--text-3); margin-bottom:10px;">📊 Area Esportazione Report CSV</p>
+    
+    <form method="GET" action="{{ route('admin.report.csv') }}" style="display:flex; gap:1rem; flex-wrap:wrap; align-items:center;">
+        
+        <div style="display:flex; flex-direction:column; gap:4px;">
+            <label style="font-size:0.7rem; color:var(--text-2); font-weight:600;">Filtra per Utente:</label>
+            <select name="utente_id" class="form-input" style="max-width:280px; min-width:200px; font-size:0.75rem; padding:0.4rem 0.6rem;">
+                <option value="">-- Seleziona Utente --</option>
+                @foreach($listaUtenti as $u)
+                    <option value="{{ $u->id_utente }}">{{ $u->cognome }} {{ $u->nome }}</option>
+                @endforeach
+            </select>
+        </div>
+
+        <button type="submit" name="azione" value="utente" class="btn btn-outline" style="font-size:0.75rem; padding:0.5rem 0.8rem; margin-top:1rem; border-color:var(--purple); color:var(--purple);">
+            📥 Scarica Report Utente
+        </button>
+
+        <div style="border-left:1px solid var(--border); height:30px; margin: 0 0.5rem; margin-top:1rem;"></div>
+
+        <div style="display:flex; flex-direction:column; gap:4px;">
+            <label style="font-size:0.7rem; color:var(--text-2); font-weight:600;">Scegli il Giorno:</label>
+            <input type="date" name="data_report" value="{{ date('Y-m-d') }}" class="form-input" style="max-width:160px; font-size:0.75rem; padding:0.4rem 0.6rem;">
+        </div>
+
+        <button type="submit" name="azione" value="data" class="btn btn-primary" style="font-size:0.75rem; padding:0.5rem 0.8rem; margin-top:1rem; background-color:var(--accent); border-color:var(--accent);">
+            📥 Scarica Report Giornaliero
+        </button>
+    </form>
+</div>
 
 <form method="GET" action="/admin/sessioni" style="margin-bottom:1.25rem;display:flex;gap:0.75rem;flex-wrap:wrap;">
     <input type="text" name="cerca" value="{{ request('cerca') }}"
