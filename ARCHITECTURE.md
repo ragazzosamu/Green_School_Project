@@ -361,7 +361,7 @@ Broker: Mosquitto, anonimo ([`mqtt/config/mosquitto.conf`](mqtt/config/mosquitto
 | Topic | Direzione | Payload | Note |
 |---|---|---|---|
 | `stazione/{mac}/ready` | Laravel → sim | `{ comando: "READY", id_punti: [...] }` | Admin completa setup. |
-| `stazione/{mac}/codice` | sim → Laravel | `{ codice: "NNNNNN", scadenza: 60 }` | Ogni 30s, codice valido per qualsiasi punto. |
+| `stazione/{mac}/codice` | sim → Laravel | `{ codice: "NNNNNN", scadenza: 60 }` | Ogni 60s, codice valido per qualsiasi punto. |
 | `stazione/{mac}/comandi` | Laravel → sim | `{ comando: "autenticazione_completata", id_stazione }` | Notifica generica (per Arduino). |
 | `stazione/{mac}/manutenzione` | Laravel → sim | `{ comando: "manutenzione", on: bool }` | Toggle dall'admin. |
 
