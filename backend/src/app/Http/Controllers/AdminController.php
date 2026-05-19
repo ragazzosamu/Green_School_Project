@@ -186,30 +186,32 @@ class AdminController extends Controller
 
     // ── SESSIONI ─────────────────────────────────────────────────────────────
 
-    public function sessioni(Request $request): \Illuminate\View\View
+    public function sessioni(Request $request)
     {
         $query = DB::table('sessioni_ricarica as s')
             ->leftJoin('utenti as u', 'u.id_utente', '=', 's.id_utente')
-            ->leftJoin('punti_ricarica as p', 'p.id_punto', '=', 's.id_punto')
-            ->select('s.*', 'u.nome', 'u.cognome', 'u.email', 'p.id_punto as punto');
+            ->orderByDesc('s.data_inizio');
 
+        // (Mantieni qui i filtri di ricerca per "cerca" e "stato" che ha scritto il tuo compagno)
+        if ($request->filled('cerca')) {
+            $cerca = $request->cerca;
+            $query->where(function($q) use ($cerca) {
+                $q->where('u.email', 'like', "%$cerca%")
+                  ->orWhere('u.nome', 'like', "%$cerca%")
+                  ->orWhere('u.cognome', 'like', "%$cerca%");
+            });
+        }
         if ($request->filled('stato')) {
             if ($request->stato === 'attiva') $query->whereNull('s.data_fine');
             if ($request->stato === 'conclusa') $query->whereNotNull('s.data_fine');
         }
 
-        if ($request->filled('cerca')) {
-            $q = '%' . $request->cerca . '%';
-            $query->where(function ($w) use ($q) {
-                $w->where('u.email', 'like', $q)
-                  ->orWhere('u.nome', 'like', $q)
-                  ->orWhere('s.id_sessione', 'like', $q);
-            });
-        }
+        $sessioni = $query->paginate(10)->withQueryString();
 
-        $sessioni = $query->orderByDesc('s.data_inizio')->paginate(25)->withQueryString();
+        //AGGIUNGI QUESTA RIGA: Prende gli utenti unici per il menu a tendina dei report
+        $listaUtenti = DB::table('utenti')->select('id_utente', 'nome', 'cognome', 'email')->orderBy('cognome')->get();
 
-        return view('admin.sessioni', compact('sessioni'));
+        return view('admin.sessioni', compact('sessioni', 'listaUtenti'));
     }
 
     // ── STAZIONI ─────────────────────────────────────────────────────────────
@@ -254,5 +256,97 @@ class AdminController extends Controller
         ]);
 
         return back()->with('success', $messaggio);
+    }
+
+    // ── REPORT EXCEL / CSV (Aggiunto per download report giornaliero) ────────
+
+   public function scaricaReportCsv(Request $request): \Illuminate\Http\Response
+    {
+        $azione = $request->input('azione'); // 'utente' oppure 'data'
+
+        // Base della query comune a entrambi i report
+        $query = DB::table('sessioni_ricarica as s')
+            ->leftJoin('utenti as u', 'u.id_utente', '=', 's.id_utente')
+            ->leftJoin('punti_ricarica as p', 'p.id_punto', '=', 's.id_punto')
+            ->select(
+                's.id_sessione',
+                'u.nome',
+                'u.cognome',
+                'u.email',
+                'p.id_punto',
+                's.data_inizio',
+                's.data_fine',
+                's.quantita_kwh',
+                's.costo_totale'
+            )
+            ->orderByDesc('s.data_inizio');
+
+        if ($azione === 'utente') {
+            $utenteId = $request->input('utente_id');
+            if (!$utenteId) {
+                abort(400, 'Seleziona un utente valido.');
+            }
+            $query->where('s.id_utente', $utenteId);
+            $utente = DB::table('utenti')->where('id_utente', $utenteId)->first();
+            $fileName = 'report_utente_' . ($utente->cognome ?? 'utente') . '_' . date('Y-m-d') . '.csv';
+        } else {
+            // Modalità Data (se vuota prende oggi)
+            $dataReport = $request->input('data_report', date('Y-m-d'));
+            $query->whereDate('s.data_inizio', $dataReport);
+            $fileName = 'report_generale_' . $dataReport . '.csv';
+        }
+
+        $risultati = $query->get();
+
+        // Inizializziamo i contatori per i totali
+        $totaleKwh = 0;
+        $totaleCosto = 0;
+
+        // Generazione fisica del file CSV
+        $csvHeader = ['ID Sessione', 'Nome', 'Cognome', 'Email Utente', 'Punto Ricarica', 'Data Inizio', 'Data Fine', 'kWh Erogati', 'Costo (€)'];
+        $handle = fopen('php://temp', 'w');
+        fputcsv($handle, $csvHeader, ';');
+        
+        foreach ($risultati as $row) {
+            // Accumuliamo i valori numerici
+            $totaleKwh += (float)($row->quantita_kwh ?? 0);
+            $totaleCosto += (float)($row->costo_totale ?? 0);
+
+            fputcsv($handle, [
+                $row->id_sessione,
+                $row->nome,
+                $row->cognome,
+                $row->email,
+                $row->id_punto ?? '—',
+                $row->data_inizio,
+                $row->data_fine ?? 'In corso',
+                number_format((float)($row->quantita_kwh ?? 0), 2, ',', ''),
+                number_format((float)($row->costo_totale ?? 0), 2, ',', '')
+            ], ';');
+        }
+        
+        // Righe vuote di spaziatura estetica prima del totale
+        fputcsv($handle, ['', '', '', '', '', '', '', '', ''], ';');
+
+        // Riga dei Totali (Mettiamo la scritta "TOTALE" sotto la colonna Data Fine e i valori incolonnati correttamente)
+        fputcsv($handle, [
+            '', // ID Sessione
+            '', // Nome
+            '', // Cognome
+            '', // Email
+            '', // Punto
+            '', // Data Inizio
+            'TOTALE COMPLESSIVO:', // Etichetta posizionata prima dei dati numerici
+            number_format($totaleKwh, 2, ',', ''), // kWh Erogati totali
+            number_format($totaleCosto, 2, ',', '') // Costo totale
+        ], ';');
+
+        rewind($handle);
+        $csvData = stream_get_contents($handle);
+        fclose($handle);
+
+        return response($csvData)
+            ->header('Content-Type', 'text/csv; charset=UTF-8')
+            ->header('Content-Disposition', 'attachment; filename="' . $fileName . '"');
     }
 }
