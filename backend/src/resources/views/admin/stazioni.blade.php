@@ -55,9 +55,9 @@
             </td>
             <td>
                 @if($s->stato_setup === 'in_setup')
-                    <a href="/admin/stazioni/{{ $s->id_stazione }}/setup" class="btn btn-primary btn-sm">Completa setup</a>
+                    <a href="/admin/stazioni/{{ rawurlencode($s->id_stazione) }}/setup" class="btn btn-primary btn-sm">Completa setup</a>
                 @else
-                    <form method="POST" action="/admin/stazioni/{{ $s->id_stazione }}/toggle" style="margin:0;">
+                    <form method="POST" action="/admin/stazioni/{{ rawurlencode($s->id_stazione) }}/toggle" style="margin:0;">
                         @csrf
                         <button type="submit" class="btn btn-sm {{ $s->in_manutenzione ? 'btn-outline' : 'btn-danger' }}">
                             {{ $s->in_manutenzione ? 'Riporta online' : 'Manutenzione' }}

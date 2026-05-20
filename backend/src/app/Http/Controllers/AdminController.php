@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Events\StazioneStatusChanged;
 use App\Models\Utenti;
 use App\Services\MqttService;
 use Illuminate\Http\Request;
@@ -387,6 +388,11 @@ class AdminController extends Controller
             DB::table('punti_ricarica')
                 ->where('id_stazione', $id)
                 ->update(['stato_hardware' => 'offline']);
+
+            // Broadcast WebSocket: la stazione diventa indisponibile (libera=false).
+            // Mappa e viste in ascolto su 'mappa' / 'stazione.{mac}' la marcano
+            // offline subito, senza aspettare il prossimo heartbeat.
+            StazioneStatusChanged::dispatch($id, false);
         }
 
         try {

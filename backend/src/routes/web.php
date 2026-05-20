@@ -116,5 +116,7 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->group(function () {
     
     Route::get('/report/csv',                [AdminController::class, 'scaricaReportCsv'])->name('admin.report.csv');
     Route::get('/stazioni',                  [AdminController::class, 'stazioni']);
+    Route::get('/stazioni/{id}/setup',           [AdminController::class, 'setupStazione']);
+    Route::post('/stazioni/{id}/setup',          [AdminController::class, 'completaSetupStazione']);
     Route::post('/stazioni/{id}/toggle',         [AdminController::class, 'toggleStazione']);
 });

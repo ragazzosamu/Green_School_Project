@@ -157,7 +157,7 @@
     </div>
 @endif
 
-<form method="POST" action="/admin/stazioni/{{ $stazione->id_stazione }}/setup">
+<form method="POST" action="/admin/stazioni/{{ rawurlencode($stazione->id_stazione) }}/setup">
     @csrf
 
     {{-- Dati stazione --}}
