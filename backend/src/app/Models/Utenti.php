@@ -20,10 +20,18 @@ class Utenti extends Authenticatable
     protected $fillable = [
         'id_utente', 'email', 'password', 'cellulare',
         'nome', 'cognome', 'tipo_account', 'ruolo', 'attivo',
+        'login_tentativi', 'login_bloccato_fino',   // ← lockout
     ];
 
     protected $hidden = [
         'password', 'remember_token',
+    ];
+
+    /**
+     * Cast automatici: login_bloccato_fino viene trattato come Carbon datetime.
+     */
+    protected $casts = [
+        'login_bloccato_fino' => 'datetime',
     ];
 
     public function getAuthIdentifierName()
