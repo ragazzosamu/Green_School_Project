@@ -86,7 +86,6 @@ class DatabaseSeeder extends Seeder
                         'potenza_max_kw'        => fake()->randomFloat(2, 0.5, 1.5),
                         'stato_hardware'        => 'offline',
                         'libera'                => 1,
-                        'data_ultimo_heartbeat' => now(),
                         'tariffa_predefinita'   => 0.00,
                         'metodi_autenticazione_supportati' => 'CODICE, RFID',
                     ]);

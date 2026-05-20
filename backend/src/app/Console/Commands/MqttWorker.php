@@ -137,36 +137,16 @@ class MqttWorker extends Command
             ? Carbon::createFromTimestamp((int) $data['ts'])
             : now();
 
-        // Un heartbeat in arrivo significa "il punto e' vivo". Se era offline
-        // lo riportiamo online SUBITO, senza aspettare il poller
-        // HeartbeatChecker (che gira ogni 90s). Gli stati 'guasto' e
-        // 'manutenzione_programmata' restano: sono decisioni amministrative.
-        $statoPrec = DB::table('punti_ricarica')
-            ->where('id_stazione', $idStazione)
-            ->where('id_punto', $idPunto)
-            ->value('stato_hardware');
-
-        $update = ['data_ultimo_heartbeat' => $ts];
-        $tornatoOnline = false;
-        if ($statoPrec === 'offline') {
-            $update['stato_hardware'] = 'online';
-            $tornatoOnline = true;
-        }
-
         DB::table('punti_ricarica')
             ->where('id_stazione', $idStazione)
             ->where('id_punto', $idPunto)
-            ->update($update);
+            ->update(['data_ultimo_heartbeat' => $ts]);
 
         DB::table('stazioni')
             ->where('id_stazione', $idStazione)
             ->update(['data_ultimo_heartbeat' => $ts]);
 
-        // Notifica la mappa in tempo reale che il punto e' tornato online.
-        if ($tornatoOnline) {
-            \App\Events\PuntoHardwareStatusChanged::dispatch($idPunto, 'online', $idStazione);
-            $this->info("-> Punto $idStazione/$idPunto tornato ONLINE da heartbeat.");
-        }
+
     }
 
     private function gestisciEvento(string $idStazione, string $idPunto, array $data, string $topic): void
