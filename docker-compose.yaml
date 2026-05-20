@@ -152,10 +152,12 @@ services:
     build: ./frontend
     container_name: green_react
     ports:
-    - "5173:5173"
+      - "5173:5173"
     volumes:
-    - ./frontend:/frontend
-    - /frontend/node_modules
+      - ./frontend:/frontend
+      - /frontend/node_modules
+    networks:
+      - green-network
 
   
 
