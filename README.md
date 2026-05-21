@@ -81,25 +81,8 @@ CACHE_STORE=redis
 BROADCAST_CONNECTION=reverb
 ```
 
-### 3. Configura il file `.env` del simulatore
-```bash
-cd simulatore
-cp .env.example .env
-```
 
-```env
-MAC_ADDRESS=AA:BB:CC:DD:EE:FF                    # id della colonnina nel DB
-PASSWORD_REGISTRAZIONE=greenschool-iot-2025      # = IOT_REGISTRATION_PASSWORD del backend
-NUMERO_PUNTI=2                                   # numero di prese fisiche
-BACKEND_URL=http://app                           # service name docker (NON localhost!)
-MQTT_HOST=green_mqtt-broker
-CODICE_INTERVAL=30                               # nuovo codice ogni 30s
-```
-
-> ⚠️ `BACKEND_URL=http://app` quando il sim gira in Docker. Se lo lanci dal tuo host
-> Windows usa `http://localhost`.
-
-### 4. Installa e compila gli asset frontend
+### 3. Installa e compila gli asset frontend
 > ⚠️ Questi comandi vanno lanciati **sul tuo PC**, NON dentro Docker.
 ```bash
 cd backend/src
@@ -108,12 +91,12 @@ npm install --save-dev laravel-echo pusher-js
 npm run build
 ```
 
-### 5. Avvia i container
+### 4. Avvia i container
 ```bash
 docker-compose up -d
 ```
 
-### 6. Crea e popola il database
+### 5. Crea e popola il database
 ```bash
 docker exec -it green_app php artisan migrate:fresh --seed
 ```
