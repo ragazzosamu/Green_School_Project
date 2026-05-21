@@ -12,7 +12,7 @@ use Illuminate\Support\Str;
  *
  * Credenziali:
  *   email:    admin@greenschool.it
- *   password: Admin@GreenSchool2026
+ *   password: password123
  *
  * Esegui con:  php artisan db:seed --class=AdminSeeder
  * Oppure aggiungi AdminSeeder::class in DatabaseSeeder.

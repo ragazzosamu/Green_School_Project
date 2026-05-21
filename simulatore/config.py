@@ -2,7 +2,8 @@ import os
 import uuid
 from dotenv import load_dotenv
 
-load_dotenv()
+env_file = os.getenv("WORKER_ENV_FILE", ".env")
+load_dotenv(env_file)
 
 
 def richiedi(chiave: str) -> str:

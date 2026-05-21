@@ -1,3 +1,27 @@
+name: gs
+
+x-worker: &w
+  build: ./simulatore
+  tty: true
+  stdin_open: true
+  volumes:
+    - ./simulatore:/simulatore
+    - ./simulatore/params:/params
+  networks:
+    - green-network
+  depends_on:
+    app:
+      condition: service_healthy   # aspetta che il backend risponda su /api/health
+    redis:
+      condition: service_started
+    reverb:
+      condition: service_started
+    mariadb:
+      condition: service_started
+    mqtt:
+      condition: service_started
+  entrypoint: bash -c "exec python main.py"
+
 services:
   mariadb:
     image: mariadb:10.11
@@ -57,6 +81,13 @@ services:
       - mariadb
       - redis
       - mqtt
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/api/health"]
+      interval: 5s         # controlla ogni 5 secondi
+      timeout: 3s          # timeout singola chiamata
+      retries: 20          # dopo start_period aspetta fino a 100s (20 * 5s)
+      start_period: 120s   # primi 120s i fallimenti non contano: composer install
+                           # sul bind mount Windows puo' metterci diversi minuti
 
   reverb:
     build: ./backend                   # stessa immagine dell'app
@@ -69,9 +100,12 @@ services:
     networks:
       - green-network
     depends_on:
-      - app
-      - redis
-      - mqtt
+      app:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      mqtt:
+        condition: service_started
 
   queue:
     build: ./backend                    # stessa immagine dell'app
@@ -82,9 +116,12 @@ services:
     networks:
       - green-network
     depends_on:
-      - app
-      - redis
-      - mqtt
+      app:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      mqtt:
+        condition: service_started
 
   heartbeat_checker:
     build: ./backend
@@ -96,26 +133,34 @@ services:
     networks:
       - green-network
     depends_on:
-      - app
-      - mariadb
-      - redis
-      - reverb
+      app:
+        condition: service_healthy
+      mariadb:
+        condition: service_started
+      redis:
+        condition: service_started
+      reverb:
+        condition: service_started
   mqtt-worker:
     build: ./backend                    # stessa immagine dell'app
     container_name: green_mqtt_worker
     volumes:
       - ./backend/src:/var/www/html
-    # Aspetta che 'app' abbia finito composer install prima di avviare il worker
-    command: sh -c "until [ -f /var/www/html/vendor/autoload.php ]; do sleep 2; done && php /var/www/html/artisan mqtt:leggi"
+    command: php /var/www/html/artisan mqtt:leggi
     restart: unless-stopped
     networks:
       - green-network
     depends_on:
-      - app
-      - mariadb
-      - redis
-      - mqtt
-      - reverb
+      app:
+        condition: service_healthy   # gia' garantisce composer install completato
+      mariadb:
+        condition: service_started
+      redis:
+        condition: service_started
+      mqtt:
+        condition: service_started
+      reverb:
+        condition: service_started
 
   mqtt:
     image: eclipse-mosquitto:latest
@@ -130,33 +175,39 @@ services:
       - ./mqtt/log:/mosquitto/log
     networks:
       - green-network
-  python:
-    build: ./simulatore
-    container_name: green_simulatore
-    tty: true # Equivalente a -t
-    stdin_open: true # Equivalente a -i 
-    volumes: 
-      - ./simulatore:/simulatore
-    environment:
-      - PYTHONUNBUFFERED=1        # Fondamentale per vedere i print nei log
-    networks:
-      - green-network
-    depends_on:
-      - redis
-      - reverb
-      - mariadb
-      - app
-      - mqtt
+  
+  worker-1:
+    <<: *w
+    environment: [PYTHONUNBUFFERED=1, WORKER_ENV_FILE=/params/worker-1.env]
+  worker-2:
+    <<: *w
+    environment: [PYTHONUNBUFFERED=1, WORKER_ENV_FILE=/params/worker-2.env]
+  worker-3:
+    <<: *w
+    environment: [PYTHONUNBUFFERED=1, WORKER_ENV_FILE=/params/worker-3.env]
+  worker-4:
+    <<: *w
+    environment: [PYTHONUNBUFFERED=1, WORKER_ENV_FILE=/params/worker-4.env]
+  worker-5:
+    <<: *w
+    environment: [PYTHONUNBUFFERED=1, WORKER_ENV_FILE=/params/worker-5.env]
+  worker-6:
+    <<: *w
+    environment: [PYTHONUNBUFFERED=1, WORKER_ENV_FILE=/params/worker-6.env]
+  worker-7:
+    <<: *w
+    environment: [PYTHONUNBUFFERED=1, WORKER_ENV_FILE=/params/worker-7.env]
     
   react:
     build: ./frontend
     container_name: green_react
     ports:
-    - "5173:5173"
+      - "5173:5173"
     volumes:
-    - ./frontend:/frontend
-    - /frontend/node_modules
-
+      - ./frontend:/frontend
+      - /frontend/node_modules
+    networks:
+      - green-network  # ← mancava
   
 
 networks:

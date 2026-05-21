@@ -9,6 +9,11 @@ use App\Http\Controllers\Api\IotController;
 use App\Http\Controllers\Api\SchoolController;
 use App\Http\Controllers\Api\GamificationController;
 
+// Healthcheck pubblico — usato dall'healthcheck Docker del container `app`.
+// Risponde 200 appena Laravel e' in piedi: non tocca il DB di proposito,
+// cosi' verifica solo che Apache/PHP/Laravel abbiano fatto boot.
+Route::get('/health', fn () => response()->json(['status' => 'ok']));
+
 // Rotta pubblica per login da dispositivi esterni (Postman/Python)
 Route::post('/login', [AuthController::class, 'login']);
 
@@ -31,6 +36,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/gamification/badges',      [GamificationController::class, 'badges']);
     Route::get('/gamification/leaderboard', [GamificationController::class, 'leaderboard']);
     Route::get('/gamification/sessioni',    [GamificationController::class, 'sessioni']);
+    Route::get('/gamification/sfide',       [GamificationController::class, 'sfide']);
 
     // Avvio sessione tramite codice monouso a 6 cifre generato dalla colonnina
     // (rendez-vous codice -> cavo, finestra 60s)

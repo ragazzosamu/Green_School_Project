@@ -118,11 +118,16 @@ docker-compose up -d
 docker exec -it green_app php artisan migrate:fresh --seed
 ```
 
-Il seeder crea:
+Il seeder crea **solo i dati di base** — niente stazioni, punti o sessioni:
 - **Utente test:** `test.test@email.it` / `password123`
-- **Admin** (vedi `AdminSeeder.php` per credenziali)
-- **Stazione TEST attiva** con MAC `AA:BB:CC:DD:EE:FF` e 2 punti
-- 5 stazioni factory + sessioni storiche per gamification
+- **Admin:** `admin@greenschool.it` / `password123`
+- Catalogo badge gamification, profilo scuola e 12 mesi di consumi
+
+> ⚠️ **Stazioni, punti, sessioni di ricarica, XP e classifica NON vengono seedati.**
+> Vanno creati a mano usando l'app (vedi il flusso operativo qui sotto). Il database
+> parte volutamente "vuoto": registri le colonnine col simulatore, completi il setup
+> dal pannello admin e avvii le sessioni di ricarica autonomamente. XP, punti in
+> classifica e sfide settimanali si popolano man mano che usi l'app.
 
 ---
 
@@ -191,7 +196,35 @@ Quello è l'indirizzo da aprire dal telefono o da condividere. Funzionano:
 
 ---
 
+## 📍 Dati di esempio: scuole di Castelfranco Veneto
+
+Dopo `migrate:fresh --seed` il database **non contiene nessuna stazione**: le devi
+inserire tu. Quando registri una colonnina e completi il setup dal pannello admin
+(step 4 del flusso operativo) ti vengono chiesti **nome, indirizzo, latitudine e
+longitudine**. Qui sotto le scuole superiori di Castelfranco Veneto con le coordinate
+già pronte da copiare — usale come stazioni di esempio così la mappa ha senso.
+
+| Scuola | Indirizzo | Latitudine | Longitudine |
+|--------|-----------|------------|-------------|
+| Liceo "Giorgione" | Via Giuseppe Verdi 25 | `45.67093060` | `11.93940310` |
+| I.T.T. "G.B. Martini" | Via Giuseppe Verdi 40 | `45.67082920` | `11.94357910` |
+| Liceo / I.P. "Florence Nightingale" | Via Giuseppe Verdi 60 | `45.67054850` | `11.94262750` |
+| I.T.I. "Eugenio Barsanti" | Via dei Carpani 19/B | `45.68190760` | `11.93726270` |
+| I.I.S. Agrario "D. Sartor" | Via Postioma di Salvarosa 28 | `45.69173640` | `11.94681220` |
+| I.S. "C. Rosselli" (Liceo Artistico) | Via G. Rizzetti 10 | `45.66807400` | `11.92694150` |
+| I.P.S.S.E.O.A. "G. Maffioli" | Via Valsugana 74 | `45.68053480` | `11.90364420` |
+| I.P.S.I.A. "G. Galilei" | Via Avenale 6 | `45.68037580` | `11.92520950` |
+
+> Coordinate geocodificate da OpenStreetMap (Nominatim). Sono nel formato richiesto
+> dal DB: `latitudine` `DECIMAL(10,8)`, `longitudine` `DECIMAL(11,8)`.
+
+---
+
 ## 🔋 Avviare una ricarica end-to-end (flusso operativo)
+
+> ⚠️ **Il database parte vuoto.** Non ci sono stazioni, punti né sessioni: vanno
+> create a mano. Questo flusso parte da zero — registri la colonnina, completi il
+> setup come admin e avvii la sessione. XP e classifica si popolano di conseguenza.
 
 Tutorial passo-passo per provare l'intero flusso di una ricarica con il nuovo **codice
 monouso** (al posto del vecchio QR). Funziona identico da **localhost** o da **ngrok**.
@@ -245,7 +278,8 @@ browser:
 1. Vai su `/admin` e fai login come admin
 2. `/admin/stazioni` — la nuova stazione appare col badge "In setup"
 3. Click su **Completa setup** → compila nome, indirizzo, lat/lng e per ogni punto:
-   tipo veicolo, connettore, potenza
+   tipo veicolo, connettore, potenza. Per nome/indirizzo/coordinate puoi copiare
+   una delle scuole nella tabella [📍 Dati di esempio](#-dati-di-esempio-scuole-di-castelfranco-veneto).
 4. **Salva e attiva** → Laravel pubblica MQTT `stazione/{mac}/ready` e il sim parte
 
 > Il numero di punti e i loro ID (1, 2, …) **non sono modificabili dall'admin**: li

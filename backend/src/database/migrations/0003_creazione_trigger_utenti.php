@@ -73,59 +73,7 @@ return new class extends Migration
             END;
         SQL);
 
-        // --- 6. Trigger per UUID Accumulatori ---
-        DB::unprepared("DROP TRIGGER IF EXISTS trg_set_accumulatori_uuid_ins");
-        DB::unprepared(<<<SQL
-            CREATE TRIGGER trg_set_accumulatori_uuid_ins
-            BEFORE INSERT ON accumulatori_stazione
-            FOR EACH ROW
-            BEGIN
-                IF NEW.id_accumulatore IS NULL OR NEW.id_accumulatore = '' THEN
-                    SET NEW.id_accumulatore = UUID();
-                END IF;
-            END;
-        SQL);
-
-        // --- 7. Calcolo Percentuale da Storico Batteria ---
-        DB::unprepared("DROP TRIGGER IF EXISTS trg_aggiorna_percentuale_accumulatore");
-        DB::unprepared(<<<SQL
-            CREATE TRIGGER trg_aggiorna_percentuale_accumulatore
-            AFTER INSERT ON storico_livello_batteria
-            FOR EACH ROW
-            BEGIN
-                UPDATE accumulatori_stazione
-                SET percentuale_carica = ROUND((NEW.livello_kwh / NULLIF(capacita_totale_kwh, 0)) * 100, 2)
-                WHERE id_accumulatore = NEW.id_accumulatore;
-            END;
-        SQL);
-
-        // --- 8. Check Giorno Tariffe (Insert) ---
-        DB::unprepared("DROP TRIGGER IF EXISTS trg_check_tariffa_giorno_ins");
-        DB::unprepared(<<<SQL
-            CREATE TRIGGER trg_check_tariffa_giorno_ins
-            BEFORE INSERT ON tariffe_orarie
-            FOR EACH ROW
-            BEGIN
-                IF NEW.giorno_settimana < 0 OR NEW.giorno_settimana > 6 THEN
-                    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'giorno_settimana deve essere tra 0 e 6';
-                END IF;
-            END;
-        SQL);
-
-        // --- 9. Check Giorno Tariffe (Update) ---
-        DB::unprepared("DROP TRIGGER IF EXISTS trg_check_tariffa_giorno_upd");
-        DB::unprepared(<<<SQL
-            CREATE TRIGGER trg_check_tariffa_giorno_upd
-            BEFORE UPDATE ON tariffe_orarie
-            FOR EACH ROW
-            BEGIN
-                IF NEW.giorno_settimana < 0 OR NEW.giorno_settimana > 6 THEN
-                    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'giorno_settimana deve essere tra 0 e 6';
-                END IF;
-            END;
-        SQL);
-
-        // --- 10. Check Sessione Aperta ---
+        // --- 6. Check Sessione Aperta ---
         // id_punto e' locale alla stazione: il filtro DEVE includere
         // entrambe le colonne, altrimenti due stazioni diverse con punto '1'
         // si bloccherebbero a vicenda.
@@ -148,7 +96,7 @@ return new class extends Migration
             END;
         SQL);
 
-        // --- 11. Update Heartbeat dopo Sessione ---
+        // --- 7. Update Heartbeat dopo Sessione ---
         // Stesso discorso: filtro su (id_stazione, id_punto) per non
         // aggiornare lo stesso id_punto su tutte le stazioni.
         DB::unprepared("DROP TRIGGER IF EXISTS trg_update_heartbeat_after_session");
@@ -176,10 +124,6 @@ return new class extends Migration
             'trg_set_stazioni_coordinata_upd',
             'trg_set_punti_uuid_ins',
             'trg_set_sessioni_uuid_ins',
-            'trg_set_accumulatori_uuid_ins',
-            'trg_aggiorna_percentuale_accumulatore',
-            'trg_check_tariffa_giorno_ins',
-            'trg_check_tariffa_giorno_upd',
             'trg_check_sessione_aperta',
             'trg_update_heartbeat_after_session',
         ];

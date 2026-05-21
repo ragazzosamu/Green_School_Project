@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Gamification_badge_catalogo;
 use App\Models\Gamification_profilo_utente;
 use App\Models\Sessioni_ricarica;
+use App\Services\SfideSettimanaliService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -186,5 +187,39 @@ class GamificationController extends Controller
             });
 
         return response()->json(['sessioni' => $sessioni]);
+    }
+
+    // ── GET /api/gamification/sfide ──────────────────────────────────────────
+    // Le 3 sfide della settimana corrente con progresso, stato e bonus XP.
+    // Il progresso viene ricalcolato dalle sessioni reali ad ogni chiamata.
+
+    public function sfide(Request $request): JsonResponse
+    {
+        $idUtente = $request->user()->id_utente;
+
+        $service = new SfideSettimanaliService();
+        $sfide   = $service->aggiorna($idUtente);
+        $definizioni = SfideSettimanaliService::definizioni();
+
+        $result = $sfide->map(function ($s) use ($definizioni) {
+            $def       = $definizioni[$s->codice_sfida] ?? [];
+            $target    = (float) $s->target;
+            $progresso = (float) $s->progresso;
+            $perc      = $target > 0 ? min(100, round(($progresso / $target) * 100)) : 0;
+
+            return [
+                'codice'      => $s->codice_sfida,
+                'titolo'      => $def['titolo']      ?? $s->codice_sfida,
+                'descrizione' => $def['descrizione'] ?? '',
+                'icona'       => $def['icona']       ?? '🎯',
+                'target'      => $target,
+                'progresso'   => round($progresso, 2),
+                'percentuale' => $perc,
+                'stato'       => $s->stato,
+                'bonus_xp'    => $def['bonus_xp']    ?? 0,
+            ];
+        })->values();
+
+        return response()->json(['sfide' => $result]);
     }
 }

@@ -334,6 +334,16 @@
             </div>
         </div>
 
+        {{-- Sfide settimanali --}}
+        <div class="gs-card">
+            <p class="section-label" style="border-top:none; padding-top:1.1rem;">Sfide della settimana</p>
+            <div id="sfide-list" style="padding:0 1.5rem 1.5rem; display:flex; flex-direction:column; gap:0.7rem;">
+                <span class="skel" style="width:100%;height:72px;border-radius:12px;display:block;"></span>
+                <span class="skel" style="width:100%;height:72px;border-radius:12px;display:block;"></span>
+                <span class="skel" style="width:100%;height:72px;border-radius:12px;display:block;"></span>
+            </div>
+        </div>
+
         {{-- Ultime sessioni --}}
         <div class="gs-card">
             <p class="section-label" style="border-top:none; padding-top:1.1rem;">Ultime sessioni</p>
@@ -602,15 +612,17 @@ const HEADERS = {
 
 async function caricaTutto() {
     try {
-        const [resProfile, resBadges, resSessioni] = await Promise.all([
+        const [resProfile, resBadges, resSessioni, resSfide] = await Promise.all([
             fetch('/api/gamification/profile',  { headers: HEADERS }),
             fetch('/api/gamification/badges',   { headers: HEADERS }),
             fetch('/api/gamification/sessioni', { headers: HEADERS }),
+            fetch('/api/gamification/sfide',    { headers: HEADERS }),
         ]);
 
         if (resProfile.ok)  renderProfile(await resProfile.json());
         if (resBadges.ok)   renderBadges(await resBadges.json());
         if (resSessioni.ok) renderSessioni(await resSessioni.json());
+        if (resSfide.ok)    renderSfide(await resSfide.json());
 
     } catch (err) {
         console.error('[gamification] caricaTutto fallito:', err);
@@ -715,7 +727,7 @@ function renderSessioni(d) {
                     padding:0.9rem 1.1rem;display:flex;align-items:center;justify-content:space-between;gap:0.75rem;">
             <div>
                 <p style="font-size:0.8rem;font-weight:600;color:var(--text);">${s.data}</p>
-                <p style="font-size:0.72rem;color:var(--text-3);">${s.durata} · ${s.kwh} kWh · ${s.costo}</p>
+                <p style="font-size:0.72rem;color:var(--text-3);">${s.durata} · ${s.kwh} kWh</p>
             </div>
             <span style="font-size:0.7rem;font-weight:700;color:var(--accent);background:var(--accent-bg);
                          border:1px solid #C5E0D0;border-radius:100px;padding:3px 10px;white-space:nowrap;">
@@ -726,6 +738,40 @@ function renderSessioni(d) {
 
     // Bug fix 1: /storico non esiste — la pagina profilo è già lo storico, link rimosso
     // (se in futuro viene creata la rotta /storico basta rimettere href="/storico")
+}
+
+// ── Sfide settimanali ────────────────────────────────────────────────────────
+function renderSfide(d) {
+    const list = document.getElementById('sfide-list');
+
+    if (!d.sfide || d.sfide.length === 0) {
+        list.innerHTML =
+            '<p style="font-size:0.78rem;color:var(--text-3);text-align:center;padding:1rem 0;">Nessuna sfida disponibile.</p>';
+        return;
+    }
+
+    list.innerHTML = d.sfide.map(s => {
+        const completata = s.stato === 'completata';
+        const badgeXp = completata
+            ? `✓ +${s.bonus_xp} XP`
+            : `+${s.bonus_xp} XP`;
+        return `
+        <div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:0.9rem 1.1rem;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:0.5rem;margin-bottom:0.35rem;">
+                <span style="font-size:0.8rem;font-weight:600;color:var(--text);">${s.icona} ${s.titolo}</span>
+                <span style="font-size:0.68rem;font-weight:700;white-space:nowrap;color:${completata ? 'var(--accent)' : 'var(--text-3)'};">
+                    ${badgeXp}
+                </span>
+            </div>
+            <p style="font-size:0.72rem;color:var(--text-3);margin-bottom:0.5rem;">${s.descrizione}</p>
+            <div style="background:var(--border);border-radius:100px;height:7px;overflow:hidden;">
+                <div style="height:100%;width:${s.percentuale}%;background:var(--accent);border-radius:100px;"></div>
+            </div>
+            <p style="font-size:0.66rem;color:var(--text-3);margin-top:4px;">
+                ${s.progresso} / ${s.target} · ${s.percentuale}%
+            </p>
+        </div>`;
+    }).join('');
 }
 
 // Carica al DOM ready

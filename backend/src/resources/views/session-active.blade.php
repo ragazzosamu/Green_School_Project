@@ -208,9 +208,9 @@
                     <p class="stat-box-label">Durata</p>
                     <p class="stat-box-val" id="time-display">00:00</p>
                 </div>
-                <div class="stat-box" id="box-cost">
-                    <p class="stat-box-label">Costo</p>
-                    <p class="stat-box-val cost" id="cost-display">€ 0.00</p>
+                <div class="stat-box" id="box-xp">
+                    <p class="stat-box-label">XP guadagnati</p>
+                    <p class="stat-box-val cost" id="xp-display">+5 XP</p>
                 </div>
             </div>
         </div>
@@ -252,7 +252,8 @@
     const sessionUuid    = "{{ $session_uuid }}";
     const idPunto        = "{{ $id_punto }}";
     const idUtente       = "{{ Auth::user()->id_utente }}";
-    const PREZZO_PER_KWH = 0.50;
+    // XP guadagnati = kWh * 10, minimo 5 garantiti (stessa formula di GamificationService)
+    const XP_PER_KWH = 10;
 
     // ── Timer persistente ────────────────────────────────────────────────────
     // Problema originale: dataInizioMs = Date.now() → ogni volta che l'utente
@@ -285,8 +286,9 @@
     }, 1000);
 
     function aggiornaUI(kwh) {
-        document.getElementById('kwh-display').innerText  = kwh.toFixed(2);
-        document.getElementById('cost-display').innerText = `€ ${(kwh * PREZZO_PER_KWH).toFixed(2)}`;
+        document.getElementById('kwh-display').innerText = kwh.toFixed(2);
+        const xp = Math.max(5, Math.round(kwh * XP_PER_KWH));
+        document.getElementById('xp-display').innerText = `+${xp} XP`;
         flashUI();
     }
 
@@ -301,7 +303,7 @@
         const els = [
             document.getElementById('kwh-display'),
             document.getElementById('box-time'),
-            document.getElementById('box-cost'),
+            document.getElementById('box-xp'),
         ];
         els[0].classList.add('flash');
         els[1].classList.add('flash-update');

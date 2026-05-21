@@ -16,7 +16,7 @@ class ScuolaSeeder extends Seeder
     public function run(): void
     {
         $scuola = Scuola_profilo::updateOrCreate(
-            ['denominazione' => 'ITIS Green School Treviso'],
+            ['denominazione' => 'IIS Barsanti-Galilei'],
             [
                 'anno_costruzione'  => 1978,
                 'superficie_mq'     => 5200.00,

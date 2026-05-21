@@ -66,7 +66,6 @@ return new class extends Migration
             )
             BEGIN
                 DECLARE v_disponibile TINYINT(1);
-                DECLARE v_batteria_sufficiente TINYINT(1) DEFAULT 1;
 
                 DECLARE EXIT HANDLER FOR SQLEXCEPTION
                 BEGIN
@@ -85,33 +84,19 @@ return new class extends Migration
                     SET p_successo = 0;
                     ROLLBACK;
                 ELSE
-                    SELECT (acc.percentuale_carica > 10.00 OR acc.id_accumulatore IS NULL)
-                    INTO v_batteria_sufficiente
-                    FROM stazioni s
-                    LEFT JOIN accumulatori_stazione acc ON s.id_stazione = acc.id_stazione
-                    WHERE s.id_stazione = p_id_stazione
-                    ORDER BY acc.percentuale_carica ASC
-                    LIMIT 1;
+                    SET p_id_sessione = UUID();
+                    INSERT INTO sessioni_ricarica
+                        (id_sessione, id_utente, id_stazione, id_punto, id_badge_usato, metodo_avvio, data_inizio, stato_pagamento)
+                    VALUES
+                        (p_id_sessione, p_id_utente, p_id_stazione, p_id_punto, p_id_badge, p_metodo_avvio, NOW(), 'non_richiesto');
 
-                    IF v_batteria_sufficiente = 0 THEN
-                        SET p_successo = 0;
-                        SET p_messaggio = 'Batteria stazione scarica (<10%)';
-                        ROLLBACK;
-                    ELSE
-                        SET p_id_sessione = UUID();
-                        INSERT INTO sessioni_ricarica
-                            (id_sessione, id_utente, id_stazione, id_punto, id_badge_usato, metodo_avvio, data_inizio, stato_pagamento)
-                        VALUES
-                            (p_id_sessione, p_id_utente, p_id_stazione, p_id_punto, p_id_badge, p_metodo_avvio, NOW(), 'non_richiesto');
+                    UPDATE punti_ricarica
+                    SET libera = 0
+                    WHERE id_stazione = p_id_stazione AND id_punto = p_id_punto;
 
-                        UPDATE punti_ricarica
-                        SET libera = 0
-                        WHERE id_stazione = p_id_stazione AND id_punto = p_id_punto;
-
-                        SET p_successo = 1;
-                        SET p_messaggio = 'Sessione avviata';
-                        COMMIT;
-                    END IF;
+                    SET p_successo = 1;
+                    SET p_messaggio = 'Sessione avviata';
+                    COMMIT;
                 END IF;
             END
         ");
@@ -152,16 +137,7 @@ return new class extends Migration
                     WHERE id_stazione = v_id_stazione AND id_punto = v_id_punto
                     LIMIT 1;
 
-                    IF v_tariffa IS NULL THEN
-                        SELECT prezzo_kwh INTO v_tariffa
-                        FROM tariffe_orarie
-                        WHERE id_stazione = v_id_stazione AND id_punto = v_id_punto
-                          AND giorno_settimana = (DAYOFWEEK(v_data_inizio) - 1)
-                          AND TIME(v_data_inizio) BETWEEN ora_inizio AND ora_fine
-                        LIMIT 1;
-
-                        IF v_tariffa IS NULL THEN SET v_tariffa = 0.50; END IF;
-                    END IF;
+                    IF v_tariffa IS NULL THEN SET v_tariffa = 0.50; END IF;
 
                     SET p_costo_calcolato = ROUND(p_quantita_kwh * v_tariffa, 2);
                     UPDATE sessioni_ricarica

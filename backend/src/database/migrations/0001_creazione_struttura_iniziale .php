@@ -71,22 +71,6 @@ return new class extends Migration
             $table->longText('metodi_autenticazione_supportati')->nullable();
         });
 
-        // --- Tabella TARIFFE_ORARIE ---
-        Schema::create('tariffe_orarie', function (Blueprint $table) {
-            $table->increments('id_tariffa');
-            $table->string('id_stazione', 32);
-            $table->string('id_punto', 8);
-            $table->foreign(['id_stazione', 'id_punto'])
-                  ->references(['id_stazione', 'id_punto'])->on('punti_ricarica')->onDelete('cascade');
-            $table->tinyInteger('giorno_settimana');
-            $table->time('ora_inizio');
-            $table->time('ora_fine');
-            $table->decimal('prezzo_kwh', 6, 4);
-            $table->date('data_attivazione');
-            $table->date('data_scadenza')->nullable();
-            $table->index(['id_stazione', 'id_punto', 'giorno_settimana', 'ora_inizio'], 'idx_tariffe_periodo');
-        });
-
         // --- Tabella SESSIONI_RICARICA ---
         Schema::create('sessioni_ricarica', function (Blueprint $table) {
             $table->string('id_sessione')->primary();
@@ -108,35 +92,11 @@ return new class extends Migration
             $table->index(['id_utente', 'data_inizio'], 'idx_sessioni_utente');
         });
 
-        // --- Tabella ACCUMULATORI_STAZIONE ---
-        Schema::create('accumulatori_stazione', function (Blueprint $table) {
-            $table->string('id_accumulatore')->primary();
-            $table->string('id_stazione', 32);
-            $table->foreign('id_stazione')->references('id_stazione')->on('stazioni')->onDelete('cascade');
-            $table->string('nome', 50)->default('Accumulatore Principale');
-            $table->decimal('capacita_totale_kwh', 10, 2);
-            $table->decimal('percentuale_carica', 5, 2)->default(0.00)->index();
-            $table->enum('stato_operativo', ['carica', 'scarica', 'standby', 'guasto', 'manutenzione'])->default('standby');
-            $table->timestamp('data_ultimo_aggiornamento')->useCurrent()->useCurrentOnUpdate();
-        });
-
-        // --- Tabella STORICO_LIVELLO_BATTERIA ---
-        Schema::create('storico_livello_batteria', function (Blueprint $table) {
-            $table->bigIncrements('id_misurazione');
-            $table->string('id_accumulatore');
-            $table->foreign('id_accumulatore')->references('id_accumulatore')->on('accumulatori_stazione')->onDelete('cascade');
-            $table->timestamp('timestamp_misurazione')->useCurrent();
-            $table->decimal('livello_kwh', 10, 2);
-            $table->index(['id_accumulatore', 'timestamp_misurazione'], 'idx_storico_batteria_tempo');
-        });
     }
 
     public function down(): void
     {
-        Schema::dropIfExists('storico_livello_batteria');
-        Schema::dropIfExists('accumulatori_stazione');
         Schema::dropIfExists('sessioni_ricarica');
-        Schema::dropIfExists('tariffe_orarie');
         Schema::dropIfExists('punti_ricarica');
         Schema::dropIfExists('badge_utente');
         Schema::dropIfExists('stazioni');

@@ -69,6 +69,9 @@ class GamificationService
         // 3. Controlla e sblocca eventuali badge
         $badgeSbloccati = $this->aggiornaPunteggioBadge($idUtente, $idSessione, $profilo);
 
+        // 4. Aggiorna le sfide settimanali (progresso + eventuale bonus XP)
+        (new SfideSettimanaliService())->aggiorna($idUtente);
+
         Log::info('[GamificationService] Profilo aggiornato', [
             'id_utente'      => $idUtente,
             'xp_guadagnati'  => $xpGuadagnati,

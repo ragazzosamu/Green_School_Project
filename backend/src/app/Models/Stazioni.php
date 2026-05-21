@@ -102,7 +102,4 @@ class Stazioni extends Model
     public function puntiRicarica() {
         return $this->hasMany(Punti_ricarica::class, 'id_stazione', 'id_stazione'); //permette di vedere quante e quali colonnine sono montate dentro questa specifica stazione
     }
-    public function accumulatori() {
-        return $this->hasMany(Accumulatori_stazione::class, 'id_stazione', 'id_stazione'); //serve a vedere quali batterie di accumulo sono instalate in questa zona per gestire l energia
-    }
 }
