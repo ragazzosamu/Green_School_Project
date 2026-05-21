@@ -370,6 +370,7 @@ docker-compose down          # Spegne e rimuove i container (immagini e volumi r
 docker-compose down --rmi all # Spegne e rimuove anche le IMMAGINI
 docker-compose up -d          # Avvia (riusa le immagini esistenti, NON ricostruisce)
 docker-compose up -d --build # Avvia RICOSTRUENDO le immagini (rifà pip install / composer install)
+docker compose restart worker-1 worker-2 worker-3 worker-4 worker-5 worker-6 worker-7 # Riavvia i 7 simulatori colonnine
 docker logs -f green_app          # Log PHP in tempo reale
 docker logs -f green_mqtt_worker  # Worker MQTT: vede ogni messaggio in arrivo
 docker logs -f green_simulatore   # Log del simulatore
