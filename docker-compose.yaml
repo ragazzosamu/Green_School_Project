@@ -208,6 +208,7 @@ services:
       - /frontend/node_modules
     networks:
       - green-network  # ← mancava
+
   
 
 networks:
