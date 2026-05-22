@@ -185,12 +185,14 @@
         $bannerStato  = 'attesa';
         $bannerIcona  = '🔌';
         $bannerTitolo = 'In attesa del cavo';
+        $attesaSecondiIniziali = (int) ($attesa_secondi ?? 60);
+        $attesaLarghezzaIniziale = max(0, min(100, round($attesaSecondiIniziali / 60 * 100)));
         $bannerSub    = 'Collega il cavo alla presa per avviare la ricarica.'
             . '<div class="attesa-timer">'
-            . '  <span class="attesa-timer-value" id="attesa-timer-value">60</span>'
+            . '  <span class="attesa-timer-value" id="attesa-timer-value">' . $attesaSecondiIniziali . '</span>'
             . '  <span class="attesa-timer-label">secondi rimanenti</span>'
             . '</div>'
-            . '<div class="attesa-progress"><div class="attesa-progress-bar" id="attesa-progress-bar" style="width:100%"></div></div>';
+            . '<div class="attesa-progress"><div class="attesa-progress-bar" id="attesa-progress-bar" style="width:' . $attesaLarghezzaIniziale . '%"></div></div>';
     } else {
         $bannerStato  = '';
         $bannerIcona  = '';
@@ -367,6 +369,9 @@
 const ID_UTENTE       = @json(Auth::user()?->id_utente);
 const ATTESA_PUNTO    = @json($attesa_punto ?? null);
 const ATTESA_STAZIONE = @json($attesa_stazione ?? null);
+// Secondi residui autorevoli calcolati dal server (TTL Redis). null = nessuna
+// attesa valida: serve a ri-ancorare il countdown ad ogni reload.
+const ATTESA_SECONDI  = @json($attesa_secondi ?? null);
 const API_TOKEN       = @json($api_token ?? '');
 
 // id_punto e' locale alla stazione ("1", "2", ...), quindi i canali per-punto
@@ -432,8 +437,15 @@ const TTL_QR = 60; // deve coincidere con SessioneService::TTL_CODICE_PENDING
 let countdownInterval = null;
 
 if (banner.classList.contains('attesa')) {
-    // Pagina caricata con attesa attiva dall'URL: salvo tutto in sessionStorage
-    if (!sessionStorage.getItem(SK_ATTESA_START)) {
+    // Il server ha confermato che il rendez-vous e' ancora valido e ci ha
+    // dato i secondi residui autorevoli (da Redis). Ri-ancoriamo il countdown
+    // su quel valore ad ogni reload: cosi' la pagina ricaricata riprende dal
+    // tempo reale rimasto e, a scadenza avvenuta, il banner non viene proprio
+    // renderizzato dal PHP (niente piu' restart a 60s).
+    if (ATTESA_SECONDI && ATTESA_SECONDI > 0) {
+        const startReale = Date.now() - (TTL_QR - ATTESA_SECONDI) * 1000;
+        sessionStorage.setItem(SK_ATTESA_START, startReale.toString());
+    } else if (!sessionStorage.getItem(SK_ATTESA_START)) {
         sessionStorage.setItem(SK_ATTESA_START, Date.now().toString());
     }
     if (ATTESA_PUNTO) {
@@ -502,7 +514,7 @@ function avviaORestituisciCountdown() {
 
 function calcolaSecondiRimanenti() {
     const start = parseInt(sessionStorage.getItem(SK_ATTESA_START) || '0', 10);
-    if (!start) return TTL_QR;
+    if (!start) return 0;
     const trascorsi = Math.floor((Date.now() - start) / 1000);
     return Math.max(0, TTL_QR - trascorsi);
 }

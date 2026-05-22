@@ -90,13 +90,34 @@ Route::get('/profilo', function (Request $request) {
         ? app(\App\Services\SessioneService::class)->kwhCorrenti($sessioneAttiva->id_sessione)
         : 0.0;
 
+    // ?attesa_stazione=<mac>&attesa=<id_punto> arrivano da /stazione/{id}
+    // dopo /api/verifica-codice riuscito. id_punto e' locale alla stazione,
+    // serve anche la stazione per ricostruire il canale WebSocket.
+    //
+    // Il banner "in attesa del cavo" viene mostrato SOLO se il rendez-vous in
+    // Redis e' ancora valido: cosi' un reload della pagina con la vecchia
+    // query string (?attesa=...) dopo la scadenza non fa ripartire il
+    // countdown a 60s. I secondi residui sono autorevoli (calcolati da Redis).
+    $attesaStazione = $request->query('attesa_stazione');
+    $attesaPunto    = $request->query('attesa');
+    $attesaSecondi  = null;
+
+    if ($attesaStazione && $attesaPunto) {
+        $attesaSecondi = app(\App\Services\SessioneService::class)
+            ->secondiAttesaResidui($attesaStazione, $userId);
+
+        if ($attesaSecondi === null) {
+            // Rendez-vous scaduto o non piu' valido: niente banner di attesa.
+            $attesaStazione = null;
+            $attesaPunto    = null;
+        }
+    }
+
     return view('gamification-profile', [
         'api_token'       => session('api_token'),
-        // ?attesa_stazione=<mac>&attesa=<id_punto> arrivano da /stazione/{id}
-        // dopo /api/verifica-codice riuscito. id_punto e' locale alla stazione,
-        // serve anche la stazione per ricostruire il canale WebSocket.
-        'attesa_stazione' => $request->query('attesa_stazione'),
-        'attesa_punto'    => $request->query('attesa'),
+        'attesa_stazione' => $attesaStazione,
+        'attesa_punto'    => $attesaPunto,
+        'attesa_secondi'  => $attesaSecondi,
         'sessione_attiva' => $sessioneAttiva,
         'kwh_attuali'     => $kwhAttuali,
     ]);

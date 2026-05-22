@@ -53,6 +53,7 @@ Il progetto gira interamente in **Docker**. I servizi che compongono lo stack:
 
 ## 📑 Documenti comuni
 - **Tabella di marcia**: [Google Sheet Lavoro](https://docs.google.com/spreadsheets/d/1Zt4d4UcoLS2TqQH-RpuAC34dMfk1Hsu7lD3KwQfXs3c/edit?usp=sharing)
+- **Presentazione**: [Google Presentazione](https://docs.google.com/presentation/d/1Ce5nIDGTAi5vJbSqfyW69fZ8uYClXnc4F36eB3Q0UAY/edit?usp=sharing)
 
 ---
 

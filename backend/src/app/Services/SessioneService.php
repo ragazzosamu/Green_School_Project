@@ -121,9 +121,40 @@ class SessioneService
     {
         return Cache::add(
             self::codicePendingKey($idStazione),
-            ['id_utente' => $idUtente, 'id_stazione' => $idStazione],
+            [
+                'id_utente'   => $idUtente,
+                'id_stazione' => $idStazione,
+                // Timestamp di scadenza: serve a calcolare i secondi residui
+                // in modo autorevole lato server, indipendente dal client.
+                'scade_a'     => now()->addSeconds(self::TTL_CODICE_PENDING)->timestamp,
+            ],
             self::TTL_CODICE_PENDING,
         );
+    }
+
+    /**
+     * Secondi rimanenti del rendez-vous codice -> cavo per una stazione.
+     *
+     * Restituisce un intero > 0 se l'attesa e' ancora valida (e, se passato
+     * $idUtente, appartiene a quell'utente); null se la chiave Redis e'
+     * assente/scaduta. Usato da /profilo per non far ripartire il countdown
+     * a 60s dopo un reload con la query string ?attesa=... ormai stantia.
+     */
+    public function secondiAttesaResidui(string $idStazione, ?string $idUtente = null): ?int
+    {
+        $pending = Cache::get(self::codicePendingKey($idStazione));
+        if (! $pending) {
+            return null;
+        }
+        if ($idUtente !== null && ($pending['id_utente'] ?? null) !== $idUtente) {
+            return null;
+        }
+        $scadeA = $pending['scade_a'] ?? null;
+        if (! $scadeA) {
+            return null;
+        }
+        $residui = (int) $scadeA - now()->timestamp;
+        return $residui > 0 ? $residui : null;
     }
 
     public function consumaCodiceInAttesa(string $idStazione): ?array

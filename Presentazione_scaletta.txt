@@ -1,0 +1,156 @@
+============================================================
+GREEN SCHOOL PROJECT - SCALETTA PRESENTAZIONE FINALE
+Stazione di Ricarica IoT & Web Platform
+23 slide - circa 15 minuti + demo live
+============================================================
+
+TEAM (5 persone): Samuele, Carmelo, Nicola, Eydan, Anna
+
+DIVISIONE RELATORI
+  RELATORE 1 ..... Architettura del sistema       (parla MOLTO)
+  RELATORE 2 ..... Funzionalita' web e React      (parla MOLTO)
+  RELATORE 3 ..... Processo Agile + Demo          (parla MOLTO)
+  RELATORE 4 ..... Apertura / contesto            (parla poco)
+  RELATORE 5 ..... Gamification e sezione scuola  (parla poco)
+
+SEGNAPOSTO IMMAGINI (riquadro tratteggiato): slide 4, 16, 17, 18.
+
+
+============================================================
+APERTURA
+============================================================
+
+--- SLIDE 1 - TITOLO ---
+Titolo, sottotitolo, 5 nomi del team, chip tecnologie.
+"Buongiorno, siamo il team di Green School Project."
+
+--- SLIDE 2 - AGENDA ---
+Le 4 parti della presentazione.
+"La presentazione e' divisa in quattro parti."
+
+
+============================================================
+PARTE 1 - IL PROGETTO  (Relatore 4 - parla poco)
+============================================================
+
+--- SLIDE 3 - CONTESTO E OBIETTIVO ---
+"Il progetto nasce per la Green Schools Competition di Treviso.
+L'obiettivo: un sistema che unisce web app, IoT e gamification."
+
+--- SLIDE 4 - COSA FA IL SISTEMA  [IMMAGINE: mappa] ---
+"L'utente trova le colonnine sulla mappa, avvia la ricarica con
+un codice a 6 cifre e vede i consumi in tempo reale."
+
+
+============================================================
+PARTE 2 - L'ARCHITETTURA  (Relatore 1 - parla molto)
+============================================================
+
+--- SLIDE 5 - DIVISORE "01 - L'architettura" ---
+Slide di sezione, transizione.
+
+--- SLIDE 6 - ARCHITETTURA A SERVIZI (DOCKER) ---
+"Tutto gira in Docker, come container separati: app, database,
+Redis, broker MQTT, worker e watchdog. Tre canali di
+comunicazione - HTTP, WebSocket e MQTT."
+
+--- SLIDE 7 - MQTT ---
+"MQTT e' publish/subscribe tramite un broker. Punto importante:
+sia la colonnina sia il backend sono publisher E subscriber. La
+colonnina pubblica heartbeat e telemetria e si iscrive ai
+comandi; il backend si iscrive a tutto e pubblica i comandi.
+Il broker li disaccoppia."
+
+--- SLIDE 8 - HEARTBEAT: MONITORARE LE COLONNINE ---
+"Come sappiamo se una colonnina e' viva? Ogni 60 secondi manda un
+heartbeat via MQTT. Il mqtt-worker lo riceve e scrive l'orario
+sul database. Poi c'e' l'heartbeat-checker, un processo separato:
+ogni 90 secondi legge dal DB e marca offline i punti silenti da
+oltre 3 minuti. Importante: il checker non parla mai con la
+colonnina, lavora solo sul database."
+
+--- SLIDE 9 - REVERB: AGGIORNAMENTI IN TEMPO REALE ---
+"Reverb serve a una cosa sola: spingere aggiornamenti rapidi al
+browser. Quando succede qualcosa, Laravel emette un evento e lo
+manda in broadcast su un canale; tutti i browser in ascolto lo
+ricevono subito. Ci sono canali pubblici (la mappa, per tutti) e
+canali privati (la tua ricarica, solo per te)."
+
+--- SLIDE 10 - REDIS: LO STATO CHE CAMBIA IN FRETTA ---
+"Redis e' un archivio in memoria, velocissimo. Lo usiamo per
+quattro cose: il codice monouso che scade da solo, la
+prenotazione del punto tenuta per 60 secondi, l'avvio sessione
+gestito in modo atomico per evitare race condition, e i kWh della
+ricarica messi in cache cosi' l'utente puo' uscire e rientrare."
+
+--- SLIDE 11 - IL DATABASE RELAZIONALE ---
+"Lo schema modella utenti, stazioni, punti e ricariche. Tre
+scelte chiave: il MAC come chiave primaria della stazione, la
+chiave composta sui punti, e stored procedure e trigger che
+garantiscono la consistenza direttamente nel database."
+
+--- SLIDE 12 - DAL QR AL CODICE MONOUSO ---
+"All'inizio usavamo un QR code, ma era poco sicuro: statico e
+permanente, chiunque poteva fotografarlo e riusarlo anche da
+casa. Siamo passati al codice monouso: cambia di continuo, vive
+solo 60 secondi e va letto dal display - quindi lega l'avvio
+alla presenza fisica dell'utente."
+
+--- SLIDE 13 - COMPONENTE IOT: IL SIMULATORE ---
+"Senza hardware fisico abbiamo scritto un simulatore Python: per
+il backend e' indistinguibile da una colonnina vera. Si registra,
+genera i codici, manda heartbeat e telemetria."
+
+--- SLIDE 14 - UNA RICARICA END-TO-END ---
+"Mettiamo tutto insieme: codice digitato, prenotazione in Redis
+di 60 secondi, cavo collegato, sessione creata sul database,
+START via MQTT e telemetria live fino alla terminazione."
+
+
+============================================================
+PARTE 3 - FUNZIONALITA', PROCESSO E DEMO
+============================================================
+
+--- SLIDE 15 - DIVISORE "02 - Funzionalita', processo e demo" ---
+Slide di sezione, transizione.
+
+--- SLIDE 16 - WEB APP: PHP + API REST  [IMMAGINE]  (Relatore 2) ---
+"Il backend Laravel espone API REST autenticate con token
+Sanctum: avvio/stop ricarica, storico sessioni. La collezione
+Postman fa da documentazione."
+
+--- SLIDE 17 - FRONTEND REACT (SPA)  [IMMAGINE]  (Relatore 2) ---
+"Abbiamo riscritto il frontend come Single Page Application in
+React, che consuma le stesse API, con aggiornamenti realtime."
+
+--- SLIDE 18 - PANNELLO AMMINISTRATIVO  [IMMAGINE]  (Relatore 2) ---
+"Il pannello admin gestisce stazioni, manutenzione, utenti e
+report giornalieri."
+
+--- SLIDE 19 - GAMIFICATION  (Relatore 5 - parla poco) ---
+"A ogni ricarica l'utente guadagna XP, risparmia CO2 e mantiene
+una streak. 8 badge progressivi e una classifica fra gli utenti."
+
+--- SLIDE 20 - SEZIONE SCUOLA E CONSUMI  (Relatore 5 - parla poco) ---
+"Una sezione mostra i consumi energetici della scuola con
+grafici, il confronto annuale e la CO2 evitata."
+
+--- SLIDE 21 - METODOLOGIA AGILE  (Relatore 3 - parla molto) ---
+"4 sprint settimanali dal 28 aprile al 24 maggio, tutti
+completati. 53 task completate, 115 story point, 84.5 ore totali
+di lavoro. Backlog su Google Sheets, cerimonie settimanali e
+ruoli a rotazione."
+
+--- SLIDE 22 - DEMO LIVE  (tutti, guida Relatore 3) ---
+Live sull'app: mappa, codice, cavo, kWh live, terminazione, badge.
+
+--- SLIDE 23 - CONCLUSIONI ---
+"Il progetto copre tutti i punti richiesti. Grazie, siamo a
+disposizione per le domande."
+
+============================================================
+DA PERSONALIZZARE PRIMA DELLA CONSEGNA
+  - Slide 4/16/17/18: inserire gli screenshot reali nei riquadri.
+  - Slide 20: sostituire i dati del grafico con i consumi veri.
+  - Verificare l'abbinamento esatto nomi <-> relatori.
+============================================================
