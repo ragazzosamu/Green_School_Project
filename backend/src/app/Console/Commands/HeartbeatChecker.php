@@ -18,16 +18,16 @@ class HeartbeatChecker extends Command
 {
     /**
      * Soglia oltre la quale un punto viene considerato offline.
-     * 3 minuti = 180 secondi. Il simulatore manda heartbeat ogni 60s,
-     * quindi 3 minuti = 3 heartbeat persi consecutivamente (ragionevole).
+     * 2 minuti = 120 secondi. Il simulatore manda heartbeat ogni 60s,
+     * quindi 2 minuto = 2 heartbeat persi consecutivamente (ragionevole).
      */
-    private const SOGLIA_OFFLINE_SEC = 180;
+    private const SOGLIA_OFFLINE_SEC = 120;
 
     /**
      * Intervallo tra una passata e la successiva. Vale la pena tenerlo
      * a meta' della soglia per garantire reattivita' senza spammare query.
      */
-    private const INTERVALLO_CHECK_SEC = 90;
+    private const INTERVALLO_CHECK_SEC = 60;
 
     public function handle()
     {
