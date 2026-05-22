@@ -114,12 +114,26 @@ def chiudi(stazione: Stazione):
 
 def main():
     stazione = Stazione()
-    if not stazione.registra():
+    
+    # Retry finché la registrazione non va a buon fine
+    MAX_TENTATIVI = 20
+    ATTESA = 15  # secondi tra un tentativo e l'altro
+    
+    for tentativo in range(1, MAX_TENTATIVI + 1):
+        print(f"  Tentativo di registrazione {tentativo}/{MAX_TENTATIVI}...")
+        if stazione.registra():
+            break
+        print(f"  Registrazione fallita, riprovo tra {ATTESA}s...")
+        time.sleep(ATTESA)
+    else:
+        print("  Impossibile registrarsi dopo tutti i tentativi.")
         sys.exit(1)
-
+    
+    # ← mancava questo blocco!
     while not stazione.attiva:
         print("  ... in attesa di 'ready' dal backend (completa il setup admin) ...")
         time.sleep(5)
+
 
     while True:
         stampa_lista_punti(stazione)

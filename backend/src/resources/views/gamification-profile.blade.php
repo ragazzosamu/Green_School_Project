@@ -502,7 +502,7 @@ function avviaORestituisciCountdown() {
 
 function calcolaSecondiRimanenti() {
     const start = parseInt(sessionStorage.getItem(SK_ATTESA_START) || '0', 10);
-    if (!start) return TTL_QR;
+    if (!start) return 0;
     const trascorsi = Math.floor((Date.now() - start) / 1000);
     return Math.max(0, TTL_QR - trascorsi);
 }
