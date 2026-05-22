@@ -23,7 +23,7 @@ Il progetto gira interamente in **Docker**. I servizi che compongono lo stack:
 | `mqtt-worker`        | `green_mqtt_worker`          | Worker che consuma i messaggi MQTT (codice, telemetria, heartbeat, eventi) e dispatcha eventi Laravel |
 | `heartbeat_checker`  | `green_heartbeat_checker`    | Watchdog: marca offline i punti che non mandano heartbeat da oltre 3 minuti |
 | `reverb`             | `green_reverb`               | Server **WebSocket** verso il browser (broadcast eventi real-time). Porta `8080`, complementare a MQTT |
-| `python`             | `green_simulatore`           | **Simulatore** delle colonnine di ricarica (vedi `simulatore/`)    |
+| `worker-1` … `worker-7` | `gs-worker-1-1` … `gs-worker-7-1` | **Simulatori** delle colonnine di ricarica: 7 worker, uno per stazione (vedi `simulatore/`) |
 
 ```
    Browser ──HTTP──► app (Laravel) ──► MariaDB / Redis
@@ -228,13 +228,20 @@ mandando heartbeat. Serve avviare il simulatore.
 
 ### 3. Avvia il simulatore colonnine
 
-Apri un terminale separato:
+I 7 simulatori (`worker-1` … `worker-7`) **partono già** con `docker-compose up -d`:
+ognuno esegue `python main.py` e legge i suoi parametri da `simulatore/params/worker-N.env`.
+
+Per pilotare una stazione a mano, agganciati alla sua console interattiva:
 
 ```bash
-docker compose exec python python3 main.py
+docker attach gs-worker-1-1
 ```
 
-Il simulatore:
+> Per staccarti **senza fermare** la stazione usa la sequenza `Ctrl+P` poi `Ctrl+Q`
+> (NON `Ctrl+C`, che ucciderebbe il processo). Puoi anche avviare solo i worker che
+> ti servono: `docker compose up -d worker-1 worker-3`.
+
+Ogni simulatore:
 1. Chiama `POST /api/iot/registra` con `MAC + PASSWORD_REGISTRAZIONE + NUMERO_PUNTI`
 2. Se è la prima volta, la stazione viene creata su DB con `stato_setup='in_setup'`
 3. Resta in attesa di un messaggio MQTT `ready` dall'admin
@@ -357,7 +364,7 @@ docker-compose up -d --build # Avvia RICOSTRUENDO le immagini (rifà pip install
 docker compose restart worker-1 worker-2 worker-3 worker-4 worker-5 worker-6 worker-7 # Riavvia i 7 simulatori colonnine
 docker logs -f green_app          # Log PHP in tempo reale
 docker logs -f green_mqtt_worker  # Worker MQTT: vede ogni messaggio in arrivo
-docker logs -f green_simulatore   # Log del simulatore
+docker logs -f gs-worker-1-1      # Log di un simulatore (worker-1)
 ```
 
 > 💡 **Quando serve `--build`?** Il codice (`.py`, `.php`) è montato come volume, quindi

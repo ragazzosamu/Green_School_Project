@@ -1,7 +1,7 @@
 ============================================================
 GREEN SCHOOL PROJECT - SCALETTA PRESENTAZIONE FINALE
 Stazione di Ricarica IoT & Web Platform
-23 slide - circa 15 minuti + demo live
+24 slide - circa 15 minuti + demo live
 ============================================================
 
 TEAM (5 persone): Samuele, Carmelo, Nicola, Eydan, Anna
@@ -13,7 +13,8 @@ DIVISIONE RELATORI
   RELATORE 4 ..... Apertura / contesto            (parla poco)
   RELATORE 5 ..... Gamification e sezione scuola  (parla poco)
 
-SEGNAPOSTO IMMAGINI (riquadro tratteggiato): slide 4, 16, 17, 18.
+Le slide 4, 16, 17, 18 hanno pannelli di contenuto gia' pronti
+(legenda mappa, gruppi API, pagine SPA, tabella stazioni).
 
 
 ============================================================
@@ -37,7 +38,7 @@ PARTE 1 - IL PROGETTO  (Relatore 4 - parla poco)
 "Il progetto nasce per la Green Schools Competition di Treviso.
 L'obiettivo: un sistema che unisce web app, IoT e gamification."
 
---- SLIDE 4 - COSA FA IL SISTEMA  [IMMAGINE: mappa] ---
+--- SLIDE 4 - COSA FA IL SISTEMA ---
 "L'utente trova le colonnine sulla mappa, avvia la ricarica con
 un codice a 6 cifre e vede i consumi in tempo reale."
 
@@ -114,16 +115,16 @@ PARTE 3 - FUNZIONALITA', PROCESSO E DEMO
 --- SLIDE 15 - DIVISORE "02 - Funzionalita', processo e demo" ---
 Slide di sezione, transizione.
 
---- SLIDE 16 - WEB APP: PHP + API REST  [IMMAGINE]  (Relatore 2) ---
+--- SLIDE 16 - WEB APP: PHP + API REST (Relatore 2) ---
 "Il backend Laravel espone API REST autenticate con token
 Sanctum: avvio/stop ricarica, storico sessioni. La collezione
 Postman fa da documentazione."
 
---- SLIDE 17 - FRONTEND REACT (SPA)  [IMMAGINE]  (Relatore 2) ---
+--- SLIDE 17 - FRONTEND REACT (SPA) (Relatore 2) ---
 "Abbiamo riscritto il frontend come Single Page Application in
 React, che consuma le stesse API, con aggiornamenti realtime."
 
---- SLIDE 18 - PANNELLO AMMINISTRATIVO  [IMMAGINE]  (Relatore 2) ---
+--- SLIDE 18 - PANNELLO AMMINISTRATIVO (Relatore 2) ---
 "Il pannello admin gestisce stazioni, manutenzione, utenti e
 report giornalieri."
 
@@ -144,13 +145,17 @@ ruoli a rotazione."
 --- SLIDE 22 - DEMO LIVE  (tutti, guida Relatore 3) ---
 Live sull'app: mappa, codice, cavo, kWh live, terminazione, badge.
 
---- SLIDE 23 - CONCLUSIONI ---
+--- SLIDE 23 - MIGLIORAMENTI FUTURI  (Relatore 3) ---
+"Il progetto e' completo, ma potrebbe crescere: hardware reale
+con ESP32 e RFID, sicurezza MQTT, pagamenti, notifiche push,
+codice piu' robusto e connessione MQTT persistente."
+
+--- SLIDE 24 - CONCLUSIONI ---
 "Il progetto copre tutti i punti richiesti. Grazie, siamo a
 disposizione per le domande."
 
 ============================================================
 DA PERSONALIZZARE PRIMA DELLA CONSEGNA
-  - Slide 4/16/17/18: inserire gli screenshot reali nei riquadri.
   - Slide 20: sostituire i dati del grafico con i consumi veri.
   - Verificare l'abbinamento esatto nomi <-> relatori.
 ============================================================

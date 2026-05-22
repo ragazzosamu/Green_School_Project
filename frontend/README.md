@@ -1,16 +1,48 @@
-# React + Vite
+# ⚛️ Frontend — Green School Project
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Frontend del progetto: una **Single Page Application** in **React** (build con **Vite**)
+che consuma le API REST del backend Laravel.
 
-Currently, two official plugins are available:
+> Per l'architettura completa del progetto vedi il [README principale](../README.md)
+> e [`ARCHITECTURE.md`](../ARCHITECTURE.md).
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+---
 
-## React Compiler
+## 🎯 Cosa fa
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- **Login** utente con token (Laravel Sanctum) conservato lato client.
+- **Mappa** delle colonnine con stato in tempo reale.
+- **Avvio ricarica** con il codice monouso a 6 cifre.
+- **Sessione attiva**: kWh aggiornati live via WebSocket.
+- **Profilo gamification**: XP, livello, badge, classifica.
+- **Sezione scuola**: grafici dei consumi energetici.
 
-## Expanding the ESLint configuration
+---
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## 🗂️ Struttura (`src/`)
+
+| Cartella       | Contenuto                                               |
+|----------------|---------------------------------------------------------|
+| `pages/`       | Le pagine della SPA (mappa, profilo, scuola, sessione…) |
+| `components/`  | Componenti riutilizzabili                               |
+| `context/`     | Context API (utente loggato, sessione attiva)           |
+| `hooks/`       | Custom hook (es. canali WebSocket)                      |
+| `api/`         | Client per le chiamate alle API del backend             |
+| `assets/`      | Immagini e risorse statiche                             |
+
+---
+
+## ▶️ Avvio
+
+### Con Docker (consigliato)
+Il frontend parte insieme agli altri servizi (`docker-compose up -d`) nel container
+`green_react`, raggiungibile su [http://localhost:5173](http://localhost:5173).
+
+### In locale
+```bash
+npm install
+npm run dev      # server di sviluppo Vite con hot reload
+npm run build    # build di produzione
+```
+
+> Il backend deve essere in esecuzione: la SPA chiama le API su `/api`.

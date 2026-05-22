@@ -1,77 +1,106 @@
 # 🖥️ Backend — Green School Project
 
 Backend del progetto, scritto in **Laravel**. È il cervello del sistema: espone le
-**API REST**, gestisce il **database**, l'autenticazione degli utenti e la comunicazione
-con le colonnine di ricarica.
+**API REST**, gestisce il **database**, l'autenticazione degli utenti, la comunicazione
+con le colonnine di ricarica (via **MQTT**) e gli aggiornamenti in tempo reale verso il
+browser (via **WebSocket**).
 
 > Il codice Laravel vero e proprio è nella sottocartella [`src/`](src/).
-> Questo README descrive *cosa fa* il backend; verrà ampliato man mano che il progetto avanza.
+> Per l'architettura completa (MQTT, WebSocket, Redis, flussi, schema DB) vedi
+> [`ARCHITECTURE.md`](../ARCHITECTURE.md).
 
 ---
 
 ## 🎯 Di cosa si occupa
 
-- **Autenticazione utenti** tramite Laravel Sanctum (login con token).
-- **Mappa delle stazioni**: elenco colonnine e relativi punti di ricarica con il loro stato.
-- **Avvio sessione di ricarica**: l'utente scansiona un QR code, il backend verifica la
-  firma e crea la sessione.
-- **Gestione sessioni**: monitoraggio e interruzione di una ricarica in corso.
-- **Endpoint IoT**: riceve heartbeat e fine-sessione dalle colonnine (fisiche o simulate).
-- **Generazione QR code** firmati per ogni stazione.
+- **Autenticazione utenti** tramite Laravel Sanctum (login con token Bearer) e sessione web.
+- **Mappa delle stazioni**: elenco colonnine e punti di ricarica con il loro stato.
+- **Avvio sessione di ricarica** con il **codice monouso a 6 cifre** mostrato dalla
+  colonnina (non più QR): l'utente lo digita, il backend lo verifica.
+- **Gestione sessioni**: monitoraggio dei kWh in tempo reale e terminazione.
+- **Comunicazione IoT via MQTT**: registrazione colonnine, heartbeat, telemetria, eventi.
+- **Gamification**: XP, livelli, badge, classifica e sfide settimanali.
+- **Pannello admin**: setup stazioni, manutenzione, gestione utenti, report.
+
+---
+
+## 🧩 Processi del backend
+
+Lo stesso codice Laravel gira in più container con ruoli diversi:
+
+| Container             | Comando                          | Ruolo                                              |
+|-----------------------|----------------------------------|----------------------------------------------------|
+| `green_app`           | Apache + PHP                     | API REST e sito web                                |
+| `green_reverb`        | `artisan reverb:start`           | Server WebSocket (aggiornamenti live al browser)   |
+| `green_queue`         | `artisan queue:work`             | Worker dei job in coda                             |
+| `green_mqtt_worker`   | `artisan mqtt:leggi`             | Consuma i messaggi MQTT dalle colonnine            |
+| `green_heartbeat_checker` | `artisan app:heartbeat-checker` | Watchdog: marca offline i punti silenti         |
 
 ---
 
 ## 🔌 API principali
 
-Tutte le rotte sono sotto `/api` (vedi `src/routes/api.php`).
+Tutte le rotte sono sotto `/api` (vedi [`src/routes/api.php`](src/routes/api.php)).
 
 ### Pubbliche
-| Metodo | Rotta     | Descrizione                          |
-|--------|-----------|--------------------------------------|
-| POST   | `/login`  | Login utente, restituisce il token   |
+| Metodo | Rotta            | Descrizione                                        |
+|--------|------------------|----------------------------------------------------|
+| GET    | `/health`        | Healthcheck (usato da Docker)                      |
+| POST   | `/login`         | Login utente, restituisce il token Sanctum         |
+| POST   | `/iot/registra`  | Registrazione di una colonnina (MAC + password)    |
 
 ### Protette — richiedono token Sanctum (`auth:sanctum`)
-| Metodo | Rotta                  | Descrizione                                      |
-|--------|------------------------|--------------------------------------------------|
-| GET    | `/stations`            | Elenco stazioni per la mappa                     |
-| GET    | `/station/{id}`        | Dettaglio di una singola stazione                |
-| POST   | `/scan-qr`             | Avvia una sessione dopo la scansione del QR      |
-| GET    | `/session/{id}`        | Stato di una sessione di ricarica                |
-| POST   | `/session/{id}/stop`   | Interrompe una sessione in corso                 |
-| POST   | `/logout`              | Invalida il token corrente                       |
+| Metodo | Rotta                       | Descrizione                                  |
+|--------|-----------------------------|----------------------------------------------|
+| GET    | `/stations`                 | Elenco stazioni per la mappa                 |
+| GET    | `/station/{id}`             | Dettaglio di una singola stazione            |
+| POST   | `/verifica-codice`          | Avvia il rendez-vous con il codice monouso   |
+| GET    | `/me/sessione-attiva`       | Sessione attiva dell'utente (polling)        |
+| GET    | `/session/{id}`             | Stato di una sessione di ricarica            |
+| POST   | `/session/{id}/stop`        | Interrompe una sessione in corso             |
+| GET    | `/school/profile`           | Profilo della scuola                         |
+| GET    | `/school/consumption`       | Consumi energetici mensili                   |
+| GET    | `/gamification/profile`     | XP, livello, CO₂, streak                     |
+| GET    | `/gamification/badges`      | Badge sbloccati e da sbloccare               |
+| GET    | `/gamification/leaderboard` | Classifica top 10 per XP                     |
+| GET    | `/gamification/sessioni`    | Ultime sessioni dell'utente                  |
+| GET    | `/gamification/sfide`       | Sfide settimanali                            |
+| POST   | `/logout`                   | Invalida il token corrente                   |
 
-### IoT — riservate alle colonnine (`device.token`)
-Autenticate tramite header `X-Device-Token` (token della stazione).
-| Metodo | Rotta                              | Descrizione                                |
-|--------|------------------------------------|--------------------------------------------|
-| POST   | `/heartbeat_punto`                 | La colonnina segnala di essere viva        |
-| POST   | `/{id_punto}/termina_sessione`     | La colonnina comunica la fine di una ricarica |
+> **Heartbeat e fine sessione delle colonnine NON passano da HTTP**: viaggiano su
+> MQTT e vengono consumati dal worker `mqtt:leggi`. Non esiste più un endpoint
+> device-autenticato (`X-Device-Token`): la colonnina, dopo `/iot/registra`,
+> comunica solo via MQTT.
 
 ---
 
 ## 🗂️ Struttura (`src/`)
 
-| Cartella / file                     | Contenuto                                              |
-|-------------------------------------|--------------------------------------------------------|
-| `app/Http/Controllers/Api/`         | Controller delle API (`Auth`, `Station`, `Session`, `Iot`) |
-| `app/Http/Middleware/`              | Middleware, incluso `device.token` per le rotte IoT    |
-| `app/Models/`                       | Modelli Eloquent (utenti, stazioni, punti, sessioni, gamification…) |
-| `app/Console/Commands/`             | Comandi artisan custom (generazione QR, token stazioni) |
-| `database/migrations/`              | Migrazioni: tabelle, stored procedure, trigger         |
-| `database/seeders/`                 | Dati di esempio per popolare il DB                     |
-| `routes/api.php`                    | Definizione delle rotte API                            |
+| Cartella / file               | Contenuto                                                  |
+|-------------------------------|------------------------------------------------------------|
+| `app/Http/Controllers/Api/`   | Controller API (`Auth`, `Station`, `Session`, `Iot`, `School`, `Gamification`) |
+| `app/Http/Controllers/`       | `AdminController`, `WebAuthController` (sito e pannello)    |
+| `app/Http/Middleware/`        | Middleware, incluso `admin` per il pannello                |
+| `app/Models/`                 | Modelli Eloquent (utenti, stazioni, punti, sessioni, gamification…) |
+| `app/Services/`               | Logica di dominio (`SessioneService`, `GamificationService`, `MqttService`…) |
+| `app/Console/Commands/`       | `MqttWorker` (`mqtt:leggi`), `HeartbeatChecker` (`app:heartbeat-checker`) |
+| `app/Events/`                 | Eventi broadcast verso il WebSocket                        |
+| `database/migrations/`        | Tabelle, stored procedure e trigger                        |
+| `database/seeders/`           | Dati di base (utenti, badge, profilo scuola, consumi)      |
+| `routes/api.php` · `web.php`  | Rotte API e rotte web/admin                                |
 
 ---
 
 ## 🔑 Concetti chiave
 
-- **Autenticazione utenti**: token Bearer rilasciato al login da Laravel Sanctum.
-- **Autenticazione colonnine**: ogni stazione ha un token segreto; le rotte IoT lo
-  verificano col middleware `device.token` (header `X-Device-Token`).
-- **QR code firmati**: il QR di una stazione contiene una firma che il backend valida
-  in `/scan-qr`, così non si possono avviare sessioni con QR falsi.
-- **Stored procedure**: la logica critica delle sessioni (avvio/terminazione) è gestita
-  da stored procedure SQL, create dalle migrazioni.
+- **Autenticazione utenti**: token Bearer (Sanctum) per le API, sessione cookie per il sito.
+- **Registrazione colonnine**: la stazione si auto-registra con `POST /iot/registra`
+  usando una password globale; poi comunica solo via MQTT.
+- **Codice monouso**: la colonnina genera un codice a 6 cifre che cambia di continuo
+  (TTL 60s in Redis). Sostituisce il vecchio QR statico, poco sicuro.
+- **Stored procedure**: avvio e terminazione sessione sono transazionali, gestite da
+  procedure SQL create dalle migrazioni.
+- **Redis**: stato volatile (codice, prenotazioni, kWh live) e niente race condition.
 
 ---
 
@@ -81,14 +110,11 @@ Autenticate tramite header `X-Device-Token` (token della stazione).
 # Ricrea il database da zero e lo popola
 docker exec -it green_app php artisan migrate:fresh --seed
 
-# Genera il QR di una stazione (output in storage/app/private/public/qrcodes)
-docker exec -it green_app php artisan app:genera 1
+# Pulisce la cache di Laravel
+docker exec -it green_app php artisan optimize:clear
 
-# Genera tutti i QR
-docker exec -it green_app php artisan app:genera-tutti
-
-# Stampa i token delle stazioni
-docker exec -it green_app php artisan app:stampa-token
+# Worker MQTT in foreground (di solito gira nel container green_mqtt_worker)
+docker exec -it green_app php artisan mqtt:leggi
 ```
 
 Per l'avvio dell'intero stack e i test con Postman, vedi il [README principale](../README.md).

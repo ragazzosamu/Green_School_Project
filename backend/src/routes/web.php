@@ -71,6 +71,17 @@ Route::get('/session/{uuid}', function ($uuid) {
         'id_punto'     => $sessione->id_punto,
         'kwh_iniziali' => $kwhIniziali,
         'api_token'    => session('api_token'),
+        // Timestamp reali (in ms) della sessione: la durata mostrata deve
+        // partire dall'inizio EFFETTIVO della ricarica, non da quando si apre
+        // la pagina. data_inizio e' impostato da sp_avvio_sessione e persiste
+        // sul DB, quindi il tempo e' corretto anche se la pagina viene aperta
+        // a ricarica gia' avviata.
+        'inizio_ms'    => $sessione->data_inizio
+            ? \Illuminate\Support\Carbon::parse($sessione->data_inizio)->timestamp * 1000
+            : null,
+        'fine_ms'      => $sessione->data_fine
+            ? \Illuminate\Support\Carbon::parse($sessione->data_fine)->timestamp * 1000
+            : null,
     ]);
 })->name('session.active')->middleware('auth');
 

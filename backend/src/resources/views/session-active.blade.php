@@ -255,19 +255,13 @@
     // XP guadagnati = kWh * 10, minimo 5 garantiti (stessa formula di GamificationService)
     const XP_PER_KWH = 10;
 
-    // ── Timer persistente ────────────────────────────────────────────────────
-    // Problema originale: dataInizioMs = Date.now() → ogni volta che l'utente
-    // naviga su un'altra pagina e torna, il timer riparte da 00:00.
-    // Fix: salviamo il timestamp di inizio in sessionStorage la prima volta,
-    // così al ritorno calcoliamo il tempo reale trascorso.
-    const SK_SESSION_START = 'gs_session_start_' + sessionUuid;
-
-    if (!sessionStorage.getItem(SK_SESSION_START)) {
-        // Prima volta che apriamo questa pagina di sessione: salvo ora
-        sessionStorage.setItem(SK_SESSION_START, Date.now().toString());
-    }
-
-    const dataInizioMs = parseInt(sessionStorage.getItem(SK_SESSION_START), 10);
+    // ── Durata: ancorata all'inizio REALE della sessione ─────────────────────
+    // Il server ci passa data_inizio (dal DB, impostato da sp_avvio_sessione).
+    // Cosi' la durata mostrata e' sempre quella reale, anche se la pagina
+    // viene aperta a ricarica gia' iniziata o da un altro dispositivo.
+    // Se la sessione e' gia' chiusa, il timer si ferma su data_fine.
+    const dataInizioMs = {{ $inizio_ms ?? 'Date.now()' }};
+    const dataFineMs   = {{ $fine_ms ?? 'null' }};
     // ────────────────────────────────────────────────────────────────────────
 
     let kwhTotali = {{ $kwh_iniziali ?? 0 }};
@@ -280,10 +274,17 @@
             aggiornaUI(kwhTotali);
         });
 
-    // Aggiorno la durata ogni secondo partendo dal timestamp salvato
-    setInterval(() => {
-        document.getElementById('time-display').innerText = formattaDurata(Date.now() - dataInizioMs);
-    }, 1000);
+    // Aggiorno la durata ogni secondo partendo dall'inizio reale della
+    // sessione. Se la sessione e' chiusa, mostro la durata fissa e non avvio
+    // l'intervallo.
+    function aggiornaDurata() {
+        const riferimento = dataFineMs || Date.now();
+        document.getElementById('time-display').innerText = formattaDurata(riferimento - dataInizioMs);
+    }
+    aggiornaDurata();
+    if (!dataFineMs) {
+        setInterval(aggiornaDurata, 1000);
+    }
 
     function aggiornaUI(kwh) {
         document.getElementById('kwh-display').innerText = kwh.toFixed(2);
@@ -327,8 +328,6 @@
             });
             const data = await resp.json();
             if (resp.ok) {
-                // Pulisco il timer dal sessionStorage: sessione conclusa
-                sessionStorage.removeItem(SK_SESSION_START);
                 window.location.href = '/profilo';
             } else {
                 alert(data.error || 'Errore durante la chiusura della sessione');
