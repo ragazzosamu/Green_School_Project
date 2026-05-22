@@ -376,6 +376,20 @@ class AdminController extends Controller
 
         $nuovoStato = ! (bool) $stazione->in_manutenzione;
 
+        // Se stiamo entrando in manutenzione, non lo permettiamo finche' c'e'
+        // una ricarica in corso: fermare la stazione interromperebbe la
+        // sessione di un utente. Una sessione attiva ha data_fine IS NULL.
+        if ($nuovoStato) {
+            $sessioneAttiva = DB::table('sessioni_ricarica')
+                ->where('id_stazione', $id)
+                ->whereNull('data_fine')
+                ->exists();
+
+            if ($sessioneAttiva) {
+                return back()->with('error', 'Impossibile mettere in manutenzione: ricarica in corso sulla stazione.');
+            }
+        }
+
         DB::table('stazioni')->where('id_stazione', $id)->update([
             'in_manutenzione' => $nuovoStato,
         ]);
