@@ -5,13 +5,24 @@ import Pusher from 'pusher-js';
 window.Pusher = Pusher;
 
 function buildEcho() {
-  const isHttps = window.location.protocol === 'https:';
+  const key    = import.meta.env.VITE_REVERB_APP_KEY;
+  const host   = import.meta.env.VITE_REVERB_HOST   || window.location.hostname;
+  const scheme = import.meta.env.VITE_REVERB_SCHEME || window.location.protocol.replace(':', '');
+  const port   = Number(import.meta.env.VITE_REVERB_PORT) || Number(window.location.port) || 5173;
+  const isHttps = scheme === 'https';
+
+  if (!key) {
+    console.error(
+      '[Echo] VITE_REVERB_APP_KEY mancante. Crea frontend/.env (vedi .env.example) e riavvia il container react.'
+    );
+  }
+
   return new Echo({
     broadcaster: 'reverb',
-    key: import.meta.env.VITE_REVERB_APP_KEY,
-    wsHost:  window.location.hostname,
-    wsPort:  isHttps ? 443 : 80,
-    wssPort: 443,
+    key,
+    wsHost: host,
+    wsPort: port,
+    wssPort: port,
     forceTLS: isHttps,
     enabledTransports: ['ws', 'wss'],
   });

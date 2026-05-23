@@ -82,8 +82,28 @@ CACHE_STORE=redis
 BROADCAST_CONNECTION=reverb
 ```
 
+### 3. Configura il file `.env` del frontend (React)
+Il file è in `.gitignore`, quindi va creato in locale su ogni PC:
+```bash
+cd frontend
+cp .env.example .env
+```
 
-### 3. Installa e compila gli asset frontend
+Le quattro variabili dentro `.env`:
+
+```env
+VITE_REVERB_APP_KEY=a350d2367d13394c34e998d87a135962   # DEVE coincidere con REVERB_APP_KEY del backend
+VITE_REVERB_HOST=localhost                              # host visto dal browser
+VITE_REVERB_PORT=5173                                   # porta del proxy WS Vite (vedi vite.config.js)
+VITE_REVERB_SCHEME=http
+```
+
+> ⚠️ **Senza questo file i WebSocket non funzionano**: Echo apre la connessione con
+> `key=undefined`, Reverb rifiuta l'handshake, e i kWh in tempo reale rimangono fermi
+> al valore iniziale (sintomo tipico: "Energia erogata" non sale mai).
+> Se vedi `[Echo] VITE_REVERB_APP_KEY mancante` nella Console DevTools, hai saltato questo step.
+
+### 4. Installa e compila gli asset frontend
 > ⚠️ Questi comandi vanno lanciati **sul tuo PC**, NON dentro Docker.
 ```bash
 cd backend/src
@@ -92,12 +112,12 @@ npm install --save-dev laravel-echo pusher-js
 npm run build
 ```
 
-### 4. Avvia i container
+### 5. Avvia i container
 ```bash
 docker-compose up -d
 ```
 
-### 5. Crea e popola il database
+### 6. Crea e popola il database
 ```bash
 docker exec -it green_app php artisan migrate:fresh --seed
 ```

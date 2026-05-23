@@ -12,6 +12,13 @@ dist
 dist-ssr
 *.local
 
+# Env locali: .env contiene VITE_REVERB_APP_KEY e va ricreato da
+# .env.example su ogni PC (vedi frontend/README.md).
+.env
+.env.local
+.env.*.local
+!.env.example
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

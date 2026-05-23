@@ -12,6 +12,14 @@ export default defineConfig({
         target: 'http://app:80',
         changeOrigin: true,
       },
+      // Proxy WebSocket Reverb. Echo apre ws://localhost:5173/app/<key>,
+      // Vite tunnella verso Apache che fa proxy a reverb:8080 (vhost.conf).
+      // Unica origine = niente CORS, e in dev funziona tutto con un solo URL.
+      '/app': {
+        target: 'ws://app:80',
+        ws: true,
+        changeOrigin: true,
+      },
     },
   },
   build: {
