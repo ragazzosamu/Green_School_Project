@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Models\Utenti;
 use App\Models\Punti_ricarica;
+use App\Models\Stazioni;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 
@@ -30,6 +31,18 @@ class Sessioni_ricarica extends Model
         'stato_pagamento'
     ]; //questo è un elenco di sicurezza: sono gli unici campi della tabella dove il codice ha il permesso di scrivere dei dati
 
+    // Cast esplicito: senza questo Laravel serializza data_inizio come stringa
+    // "Y-m-d H:i:s" senza timezone, e JavaScript la interpreta come ora
+    // LOCALE -> con DB in UTC e browser in Europe/Rome la sessione mostra
+    // 2 ore di durata appena partita. Con il cast, la stringa esce come
+    // "2026-05-23T09:00:00.000000Z" (ISO 8601 UTC) e JS la legge corretta.
+    protected $casts = [
+        'data_inizio'  => 'datetime',
+        'data_fine'    => 'datetime',
+        'quantita_kwh' => 'float',
+        'costo_totale' => 'float',
+    ];
+
     protected static function booted()
     {
         static::creating(function ($sessione) {
@@ -44,10 +57,13 @@ class Sessioni_ricarica extends Model
         return $this->belongsTo(Utenti::class, 'id_utente', 'id_utente'); //crea un collegamento logico per risalire subito a quale persona tra tutti gli utenti ha effettuato questa ricarica
     }
 
-    public function puntoRicarica() 
+    public function puntoRicarica()
     {
         return $this->belongsTo(Punti_ricarica::class, 'id_punto', 'id_punto'); //collega la ricarica alla colonnina specifica che è stata usata fisicamente
     }
 
-    
+    public function stazione()
+    {
+        return $this->belongsTo(Stazioni::class, 'id_stazione', 'id_stazione');
+    }
 }

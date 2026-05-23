@@ -144,7 +144,13 @@
             font-weight: 600;
         }
 
-        .sidebar-link-icon { font-size: 1rem; width: 20px; text-align: center; }
+        .sidebar-link-icon {
+            font-size: 1rem;
+            width: 20px;
+            text-align: center;
+            font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', 'DM Sans', sans-serif;
+            line-height: 1;
+        }
 
         .sidebar-footer {
             padding: 1rem 0.75rem;

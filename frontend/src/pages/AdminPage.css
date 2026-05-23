@@ -131,7 +131,16 @@
 
 .a-sidebar-link:hover { background: var(--surface2); color: var(--text); }
 .a-sidebar-link.active { background: var(--purple-bg); color: var(--purple); font-weight: 600; }
-.a-sidebar-icon { font-size: 1rem; width: 20px; text-align: center; }
+
+/* Fallback emoji: DM Sans non ha glifi per le emoji, e su alcuni sistemi
+   (sopratutto Linux dei container Docker) restano vuote senza il fallback. */
+.a-sidebar-icon {
+  font-size: 1rem;
+  width: 20px;
+  text-align: center;
+  font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', 'DM Sans', sans-serif;
+  line-height: 1;
+}
 
 .a-sidebar-footer {
   padding: 1rem 0.75rem;

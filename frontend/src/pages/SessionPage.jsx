@@ -13,7 +13,11 @@ function fmtKwh(val) {
 
 function fmtDuration(startIso) {
   if (!startIso) return '—';
-  const diff = Math.floor((Date.now() - new Date(startIso).getTime()) / 1000);
+  // Date.parse gestisce ISO 8601 con suffisso Z; il backend ora invia
+  // sempre il datetime in UTC esplicito (model cast 'datetime'), quindi
+  // la differenza con Date.now() e' coerente con la timezone locale.
+  // Math.max evita di mostrare valori negativi in caso di skew di clock.
+  const diff = Math.max(0, Math.floor((Date.now() - new Date(startIso).getTime()) / 1000));
   const h = Math.floor(diff / 3600);
   const m = Math.floor((diff % 3600) / 60);
   const s = diff % 60;

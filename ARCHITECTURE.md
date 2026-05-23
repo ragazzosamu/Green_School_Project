@@ -171,10 +171,113 @@ JavaScript (`Laravel Echo` + `Pusher.js`) si connette, si **sottoscrive** a uno 
 
 ### Canali pubblici vs privati
 
-- **Public channel**: chiunque può sottoscrivere. Per dati non sensibili (mappa generale).
-- **Private channel**: prima della sottoscrizione il client deve essere **autenticato**
-  presso `/broadcasting/auth`. Laravel chiama una closure in [`channels.php`](backend/src/routes/channels.php)
-  che decide se autorizzare. Per dati per-utente (kWh del SUO punto di ricarica).
+- **Public channel**: chiunque può sottoscrivere. Per dati non sensibili (mappa generale,
+  stato delle stazioni). Esempio nel progetto: `mappa` (vedi [`useStationsEcho.js`](frontend/src/hooks/useStationsEcho.js)).
+- **Private channel**: prima della sottoscrizione il client deve **dimostrare al server
+  di essere autorizzato** a quel canale specifico. Per dati per-utente (kWh del SUO
+  punto di ricarica, eventi della SUA sessione). Esempio: `user.{id_utente}`.
+
+### Come funziona davvero la sottoscrizione a un canale privato
+
+Quando il JS chiama `echo.private('user.42')`, parte un protocollo a 4 step:
+
+```
+1. Echo apre la WS verso Reverb (è una connessione anonima — non sa ancora chi sei).
+2. Echo manda al SERVER LARAVEL (non a Reverb!) un POST /broadcasting/auth con:
+      { socket_id: "12345.67890", channel_name: "private-user.42" }
+3. Laravel guarda chi sei (middleware auth), poi chiama la closure di channels.php
+   che corrisponde al pattern del canale. Se torna true, Laravel firma un token
+   HMAC con la chiave dell'app e lo restituisce a Echo.
+4. Echo manda il token a Reverb sul canale WS. Reverb verifica la firma con la
+   stessa chiave e, se ok, ti iscrive al canale e da quel momento ti inoltra
+   gli eventi.
+```
+
+Punto importante: **Reverb non parla con Laravel direttamente**. È il browser che fa
+da messaggero tra Laravel e Reverb portando il token firmato. Reverb non sa chi sei,
+sa solo che hai un token valido firmato dalla stessa chiave dell'app.
+
+La closure che decide se autorizzare sta in [`channels.php`](backend/src/routes/channels.php):
+
+```php
+Broadcast::channel('user.{id_utente}', function ($user, $id_utente) {
+    return $user->id_utente === $id_utente;   // solo tu puoi ascoltare il TUO canale
+});
+```
+
+Il parametro `$user` arriva dal middleware di autenticazione del route `/broadcasting/auth`.
+Qui sta il dettaglio cruciale del prossimo paragrafo.
+
+### Il problema: Blade ha la sessione, React ha solo un token
+
+Il route `/broadcasting/auth` viene registrato automaticamente da
+[`bootstrap/app.php`](backend/src/bootstrap/app.php) tramite `withBroadcasting()`, e di
+default usa il middleware **`web`** (sessione cookie + CSRF). Questo va benissimo per
+Blade, che ha la sessione e manda l'`X-CSRF-TOKEN` con il `<meta>`:
+
+```js
+// session-active.blade.php
+authEndpoint: '/broadcasting/auth',
+auth: {
+    headers: {
+        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+    },
+},
+```
+
+React invece autentica via Sanctum **Bearer token**, non ha sessione cookie e non ha
+CSRF. Se React usasse lo stesso `/broadcasting/auth` riceverebbe 401 o redirect al
+login, Echo non si sottoscriverebbe, e gli eventi privati non arriverebbero mai
+(sintomo classico: i kWh sembrano "congelati" durante la ricarica).
+
+**Soluzione**: c'è un secondo endpoint registrato esplicitamente in
+[`routes/api.php`](backend/src/routes/api.php), protetto via Sanctum:
+
+```php
+// Stesso channels.php, ma con middleware diverso e prefisso /api
+Broadcast::routes(['middleware' => ['auth:sanctum'], 'prefix' => 'api']);
+```
+
+Effetto: oltre a `POST /broadcasting/auth` (per Blade) esiste anche
+`POST /api/broadcasting/auth` (per React). Echo lato React lo configura così
+([`useSessionChannel.js`](frontend/src/hooks/useSessionChannel.js)):
+
+```js
+new Echo({
+  broadcaster: 'reverb',
+  // ...
+  authEndpoint: '/api/broadcasting/auth',   // <-- override del default
+  auth: {
+    headers: {
+      Authorization: `Bearer ${token}`,    // Sanctum token, NO CSRF
+      Accept: 'application/json',
+    },
+  },
+});
+```
+
+Entrambi gli endpoint chiamano alla fine la **stessa** closure di `channels.php`. Cambia
+solo COME è stato autenticato l'utente prima.
+
+### Schema riassuntivo
+
+```
+       ┌──────────── Blade ──────────┐         ┌──────────── React ──────────┐
+       │                              │         │                              │
+Echo ──► POST /broadcasting/auth  ────┤    Echo ──► POST /api/broadcasting/auth┤
+       │   middleware: web            │         │   middleware: auth:sanctum   │
+       │   auth: cookie sessione      │         │   auth: Bearer token         │
+       │   CSRF richiesto             │         │   CSRF non richiesto         │
+       │                              │         │                              │
+       └─────────────┬────────────────┘         └──────────────┬───────────────┘
+                     │                                         │
+                     └──────────► channels.php ◄──────────────┘
+                                  closure decide  → firma HMAC  → Reverb iscrive
+```
+
+Pubblici e privati hanno lo stesso costo di trasporto; cambia solo l'**handshake
+iniziale** di autorizzazione. Una volta iscritti, un evento `ShouldBroadcastNow`
+arriva con la stessa latenza in entrambi i casi.
 
 ### `ShouldBroadcast` vs `ShouldBroadcastNow`
 
@@ -780,6 +883,22 @@ Il [`MqttWorker`](backend/src/app/Console/Commands/MqttWorker.php) usa una sola 
 | Canale | Auth | Eventi |
 |---|---|---|
 | `user.{id_utente}` | [`channels.php`](backend/src/routes/channels.php): `$user->id_utente === $id_utente` | `.sessione.avviata`, `.ricarica.heartbeat` |
+
+### Endpoint di autorizzazione per i canali privati
+
+Per i canali privati Echo deve autenticarsi prima di sottoscriversi (vedi
+[sezione C](#c-websocket-reverb-broadcast-verso-il-browser) per il flusso completo).
+Esistono due endpoint che chiamano la stessa closure di `channels.php`:
+
+| Endpoint | Middleware | Usato da | Header richiesti |
+|---|---|---|---|
+| `POST /broadcasting/auth` | `web` | Blade | `X-CSRF-TOKEN` |
+| `POST /api/broadcasting/auth` | `auth:sanctum` | React | `Authorization: Bearer <token>` |
+
+Il secondo è registrato in [`routes/api.php`](backend/src/routes/api.php) con
+`Broadcast::routes(['middleware' => ['auth:sanctum'], 'prefix' => 'api'])`. Echo lato
+React punta lì via `authEndpoint: '/api/broadcasting/auth'` in
+[`useSessionChannel.js`](frontend/src/hooks/useSessionChannel.js).
 
 ### Eventi
 

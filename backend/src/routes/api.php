@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\StationController;
@@ -9,6 +10,14 @@ use App\Http\Controllers\Api\IotController;
 use App\Http\Controllers\Api\SchoolController;
 use App\Http\Controllers\Api\GamificationController;
 use App\Http\Controllers\Api\AdminApiController;
+
+// Broadcasting auth per i client a TOKEN (React).
+// L'endpoint default /broadcasting/auth registrato da withBroadcasting() in
+// bootstrap/app.php usa middleware 'web' (sessione + CSRF) ed e' quello che
+// usa Blade. React via Sanctum non ha sessione, percio' usa questo endpoint
+// alternativo /api/broadcasting/auth con auth:sanctum.
+// Echo lato React deve puntare a `authEndpoint: '/api/broadcasting/auth'`.
+Broadcast::routes(['middleware' => ['auth:sanctum'], 'prefix' => 'api']);
 
 // Healthcheck pubblico — usato dall'healthcheck Docker del container `app`.
 // Risponde 200 appena Laravel e' in piedi: non tocca il DB di proposito,

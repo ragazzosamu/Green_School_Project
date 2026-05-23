@@ -150,7 +150,10 @@ class SessionController extends Controller
     {
         $userId = $request->user()->id_utente;
 
-        $sessione = Sessioni_ricarica::where('id_utente', $userId)
+        // Eager load della stazione: serve a React per mostrare nome
+        // e indirizzo al posto del MAC nudo nell'header sessione.
+        $sessione = Sessioni_ricarica::with('stazione:id_stazione,nome,indirizzo')
+            ->where('id_utente', $userId)
             ->whereNull('data_fine')
             ->orderByDesc('data_inizio')
             ->first();
@@ -160,12 +163,21 @@ class SessionController extends Controller
         }
 
         return response()->json([
-            'attiva'      => true,
-            'id_sessione' => $sessione->id_sessione,
-            'id_stazione' => $sessione->id_stazione,
-            'id_punto'    => $sessione->id_punto,
-            'kwh_erogati' => $this->sessioni->kwhCorrenti($sessione->id_sessione),
-            'data_inizio' => $sessione->data_inizio,
+            'attiva'       => true,
+            'id_sessione'  => $sessione->id_sessione,
+            'id_stazione'  => $sessione->id_stazione,
+            'id_punto'     => $sessione->id_punto,
+            'kwh_erogati'  => $this->sessioni->kwhCorrenti($sessione->id_sessione),
+            // Grazie al cast 'datetime' sul modello, data_inizio esce come
+            // ISO 8601 UTC ("...Z") e JavaScript lo interpreta correttamente
+            // anche con timezone locale diversa da UTC.
+            'data_inizio'  => $sessione->data_inizio,
+            'metodo_avvio' => $sessione->metodo_avvio,
+            'stazione'     => $sessione->stazione ? [
+                'id_stazione' => $sessione->stazione->id_stazione,
+                'nome'        => $sessione->stazione->nome,
+                'indirizzo'   => $sessione->stazione->indirizzo,
+            ] : null,
         ], 200);
     }
 

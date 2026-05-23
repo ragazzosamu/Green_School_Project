@@ -14,9 +14,16 @@ function buildEcho(token) {
     wssPort: 443,
     forceTLS: isHttps,
     enabledTransports: ['ws', 'wss'],
+    // Endpoint auth dedicato a Sanctum (vedi routes/api.php):
+    // il default /broadcasting/auth usa middleware 'web' (sessione + CSRF)
+    // che React non ha, quindi senza questo override Echo non riusciva
+    // a sottoscrivere il PrivateChannel `user.{id}` e gli eventi di
+    // telemetria non arrivavano mai (-> kWh non si aggiornavano live).
+    authEndpoint: '/api/broadcasting/auth',
     auth: {
       headers: {
         Authorization: `Bearer ${token}`,
+        Accept: 'application/json',
       },
     },
   });

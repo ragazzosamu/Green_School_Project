@@ -35,18 +35,21 @@ function XpBar({ xp, livello }) {
   );
 }
 
+// Shape badge dall'API:
+//   sbloccati    -> { codice, nome, descrizione, icona_emoji, data_sblocco }
+//   da_sbloccare -> { codice, nome, descrizione, icona_emoji, condizione_json }
 function BadgeCard({ badge, earned }) {
   return (
     <div className={`badge-card${earned ? ' badge-card--earned' : ' badge-card--locked'}`}>
       <div className="badge-icon">
-        {earned ? (badge.icona ?? '🏅') : '🔒'}
+        {earned ? (badge.icona_emoji ?? '🏅') : '🔒'}
       </div>
       <div className="badge-info">
         <p className="badge-name">{badge.nome}</p>
         <p className="badge-desc">{badge.descrizione ?? ''}</p>
-        {earned && badge.data_ottenimento && (
+        {earned && badge.data_sblocco && (
           <p className="badge-date">
-            {new Date(badge.data_ottenimento).toLocaleDateString('it-IT')}
+            Sbloccato il {new Date(badge.data_sblocco).toLocaleDateString('it-IT')}
           </p>
         )}
       </div>
@@ -70,33 +73,20 @@ function LeaderboardRow({ entry, index, isMe }) {
   );
 }
 
+// Shape che arriva da GET /api/gamification/sessioni:
+//   { id_sessione, data, durata, kwh, costo, xp }
+// Tutti i campi sono gia' formattati lato server (data come "23 Mag 2026",
+// durata come "1h 30m", costo come "€ 4,50", xp come "+25 XP").
 function SessionRow({ session }) {
-  const kwh = parseFloat(session.quantita_kwh) || 0;
-  const date = session.data_inizio
-    ? new Date(session.data_inizio).toLocaleDateString('it-IT', {
-        day: '2-digit', month: 'short', year: 'numeric',
-      })
-    : '—';
-  const duration = session.data_inizio && session.data_fine
-    ? (() => {
-        const diff = Math.floor(
-          (new Date(session.data_fine) - new Date(session.data_inizio)) / 60000,
-        );
-        return diff < 60 ? `${diff} min` : `${Math.floor(diff / 60)}h ${diff % 60}m`;
-      })()
-    : '—';
-
   return (
     <div className="session-row">
       <div className="session-row-left">
-        <p className="session-row-date">{date}</p>
-        <p className="session-row-station">
-          {session.stazione?.nome ?? session.id_stazione ?? '—'}
-        </p>
+        <p className="session-row-date">{session.data ?? '—'}</p>
+        <p className="session-row-station">{session.xp ?? ''}</p>
       </div>
       <div className="session-row-right">
-        <p className="session-row-kwh">{fmtKwh(kwh)}</p>
-        <p className="session-row-dur">{duration}</p>
+        <p className="session-row-kwh">{session.kwh ?? 0} kWh</p>
+        <p className="session-row-dur">{session.durata ?? '—'} · {session.costo ?? ''}</p>
       </div>
     </div>
   );
@@ -179,7 +169,13 @@ export default function ProfilePage() {
     setFetched((p) => ({ ...p, badges: true }));
     setLoad('badges', true);
     apiClient.get('/gamification/badges')
-      .then(({ data }) => setBadges(Array.isArray(data.data ?? data) ? (data.data ?? data) : []))
+      // L'API risponde { sbloccati: [...], da_sbloccare: [...] }.
+      // Li uniamo in un solo array, marcando earned=true sui primi.
+      .then(({ data }) => {
+        const sbloccati   = (data?.sbloccati    ?? []).map((b) => ({ ...b, earned: true }));
+        const daSbloccare = (data?.da_sbloccare ?? []).map((b) => ({ ...b, earned: false }));
+        setBadges([...sbloccati, ...daSbloccare]);
+      })
       .catch(() => setErr('badges', 'Impossibile caricare i badge. Controlla la connessione.'))
       .finally(() => setLoad('badges', false));
   }, [tab, fetched.badges]);
@@ -201,18 +197,17 @@ export default function ProfilePage() {
     setFetched((p) => ({ ...p, sessions: true }));
     setLoad('sessions', true);
     apiClient.get('/gamification/sessioni')
-      .then(({ data }) => setSessions(Array.isArray(data.data ?? data) ? (data.data ?? data) : []))
+      // L'endpoint risponde { sessioni: [...] } (vedi GamificationController).
+      // Manteniamo anche i fallback su data.data e data per resilienza.
+      .then(({ data }) => {
+        const arr = data?.sessioni ?? data?.data ?? data;
+        setSessions(Array.isArray(arr) ? arr : []);
+      })
       .catch(() => setErr('sessions', 'Impossibile caricare lo storico. Controlla la connessione.'))
       .finally(() => setLoad('sessions', false));
   }, [tab, fetched.sessions]);
 
-  /* Badge: catalogo completo con earned flag */
-  const earnedIds = new Set(
-    badges
-      .filter((b) => b.data_ottenimento || b.earned)
-      .map((b) => b.id_badge ?? b.id),
-  );
-  // Se l'API restituisce solo i badge guadagnati, li mostriamo tutti come earned
+  /* La fetch unisce gia' sbloccati+da_sbloccare con flag `earned` esplicito */
   const allBadges = badges;
 
   return (
@@ -306,9 +301,9 @@ export default function ProfilePage() {
             <div className="badges-grid">
               {allBadges.map((b, i) => (
                 <BadgeCard
-                  key={b.id_badge ?? b.id ?? i}
+                  key={b.codice ?? i}
                   badge={b}
-                  earned={!!(b.data_ottenimento || b.earned || earnedIds.has(b.id_badge ?? b.id))}
+                  earned={!!b.earned}
                 />
               ))}
             </div>
