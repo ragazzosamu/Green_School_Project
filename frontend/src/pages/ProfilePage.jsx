@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useEffect, useState, useRef } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import NavBar from '../components/NavBar';
 import apiClient from '../api/client';
 import './ProfilePage.css';
 
@@ -105,8 +106,50 @@ function SessionRow({ session }) {
 const TABS = ['Profilo', 'Badge', 'Classifica', 'Storico'];
 
 export default function ProfilePage() {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
+  // Banner "in attesa del cavo": arriva da /react/stazione/:id dopo verifica
+  // codice (?attesa_stazione=XXX). Polliamo i secondi residui dal server
+  // (Redis) ogni secondo finche' la chiave esiste.
+  const attesaStazione = searchParams.get('attesa_stazione');
+  const [attesaSecondi, setAttesaSecondi] = useState(null);
+  const pollAttesaRef = useRef(null);
+
+  useEffect(() => {
+    if (!attesaStazione) {
+      setAttesaSecondi(null);
+      return;
+    }
+    let alive = true;
+
+    async function tick() {
+      try {
+        const { data } = await apiClient.get('/me/attesa-cavo', {
+          params: { id_stazione: attesaStazione },
+        });
+        if (!alive) return;
+        if (data.attesa) {
+          setAttesaSecondi(data.secondi_residui);
+        } else {
+          setAttesaSecondi(null);
+          clearInterval(pollAttesaRef.current);
+        }
+      } catch {
+        if (!alive) return;
+        setAttesaSecondi(null);
+        clearInterval(pollAttesaRef.current);
+      }
+    }
+
+    tick();
+    pollAttesaRef.current = setInterval(tick, 1000);
+    return () => {
+      alive = false;
+      clearInterval(pollAttesaRef.current);
+    };
+  }, [attesaStazione]);
 
   const [tab, setTab]               = useState('Profilo');
   const [profile, setProfile]       = useState(null);
@@ -163,11 +206,6 @@ export default function ProfilePage() {
       .finally(() => setLoad('sessions', false));
   }, [tab, fetched.sessions]);
 
-  async function handleLogout() {
-    await logout();
-    window.location.href = '/react/login';
-  }
-
   /* Badge: catalogo completo con earned flag */
   const earnedIds = new Set(
     badges
@@ -179,23 +217,21 @@ export default function ProfilePage() {
 
   return (
     <div className="profile-page">
-      {/* Header */}
-      <header className="pp-header">
-        <Link to="/react/map" className="logo">
-          <div className="logo-mark">🌱</div>
-          <span className="logo-text">GreenSchool</span>
-        </Link>
-        <nav className="pp-nav">
-          <Link to="/react/map"      className="nav-link">🗺️ Mappa</Link>
-          <Link to="/react/sessione" className="nav-link">⚡ Sessione</Link>
-          {user?.ruolo === 'admin' && (
-            <Link to="/react/admin" className="nav-link" style={{ color: '#7C3AED' }}>⚙️ Admin</Link>
-          )}
-          <button onClick={handleLogout} className="logout-btn">Esci</button>
-        </nav>
-      </header>
+      <NavBar />
 
       <main className="pp-main">
+        {attesaSecondi !== null && (
+          <div className="attesa-banner" role="status">
+            <span className="attesa-spinner" />
+            <div className="attesa-text">
+              <p className="attesa-title">In attesa del cavo…</p>
+              <p className="attesa-sub">
+                Collega il cavo a una presa libera della stazione entro <strong>{attesaSecondi}s</strong>.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Hero profilo */}
         <div className="profile-hero">
           <div className="profile-avatar">

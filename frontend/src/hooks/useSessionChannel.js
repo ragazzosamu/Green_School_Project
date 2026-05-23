@@ -46,28 +46,27 @@ export function useSessionChannel(userId, token, initialSession) {
       echoRef.current = buildEcho(token);
       const channel = echoRef.current.private(`user.${userId}`);
 
-      // Sessione avviata (nel caso la pagina venga aperta durante l'avvio)
+      // Sessione avviata (cavo collegato -> sessione partita)
       channel.listen('.sessione.avviata', (e) => {
         setSession((prev) => ({
           ...(prev ?? {}),
           ...e,
-          kwh: e.kwh_totali ?? prev?.kwh ?? 0,
+          kwh: 0,
         }));
       });
 
-      // Aggiornamento kWh in tempo reale (telemetria ogni ~5s)
+      // Telemetria ogni ~5s: l'evento broadcasta SOLO il delta in
+      // `cambiamento_kwh` (vedi backend/src/app/Events/TelemetriaRicevuta.php).
+      // Va accumulato lato client — il payload non contiene il totale.
       channel.listen('.ricarica.heartbeat', (e) => {
         setSession((prev) => {
           if (!prev) return prev;
-          return {
-            ...prev,
-            kwh: e.kwh_totali ?? prev.kwh,
-            voltaggio: e.voltaggio,
-            corrente: e.corrente,
-            potenza_kw: e.voltaggio && e.corrente
-              ? ((e.voltaggio * e.corrente) / 1000).toFixed(2)
-              : prev.potenza_kw,
-          };
+          if (e.id_sessione && prev.id_sessione && e.id_sessione !== prev.id_sessione) {
+            return prev;
+          }
+          const delta = Number(e.cambiamento_kwh) || 0;
+          const totale = (Number(prev.kwh) || 0) + delta;
+          return { ...prev, kwh: totale };
         });
       });
     } catch (err) {

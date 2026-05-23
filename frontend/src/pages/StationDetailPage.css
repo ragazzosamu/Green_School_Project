@@ -1,0 +1,374 @@
+/* StationDetailPage — porting di station-detail.blade.php + header app.blade.php */
+
+.sd-page {
+  min-height: 100vh;
+  background: #F7F6F2;
+  color: #1A1916;
+  font-family: 'DM Sans', sans-serif;
+}
+
+/* ── Header (nav) ── */
+.sd-header-bar {
+  position: sticky;
+  top: 0;
+  z-index: 200;
+  background: rgba(247,246,242,0.92);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid #E4E2DA;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 1.5rem;
+  height: 60px;
+}
+
+.sd-header-bar .logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+}
+
+.sd-header-bar .logo-mark {
+  width: 28px; height: 28px;
+  background: #2A6B4A;
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  box-shadow: 0 2px 8px rgba(42,107,74,0.22);
+}
+
+.sd-header-bar .logo-text {
+  font-family: 'DM Serif Display', Georgia, serif;
+  font-size: 1.15rem;
+  color: #1A1916;
+}
+
+.sd-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sd-nav .nav-link {
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: #6B6860;
+  text-decoration: none;
+  padding: 6px 12px;
+  border-radius: 8px;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+.sd-nav .nav-link:hover { background: #F2F1ED; color: #1A1916; }
+
+.sd-nav .logout-btn {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #C0392B;
+  background: none;
+  border: 1px solid transparent;
+  padding: 6px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.sd-nav .logout-btn:hover { background: #FDF0EE; border-color: #EBCECA; }
+
+/* ── Main ── */
+.sd-main {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2.5rem 1.5rem;
+}
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #A8A69E;
+  text-decoration: none;
+  margin-bottom: 1.5rem;
+}
+.back-link:hover { color: #6B6860; }
+
+/* ── Card stazione ── */
+.station-card {
+  background: #FFFFFF;
+  border: 1px solid #E4E2DA;
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.04);
+}
+
+.station-header {
+  padding: 1.75rem 2rem;
+  border-bottom: 1px solid #E4E2DA;
+}
+
+.station-meta { margin-bottom: 1.25rem; }
+
+.station-eyebrow {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #A8A69E;
+  margin-bottom: 5px;
+}
+
+.station-name {
+  font-family: 'Instrument Serif', Georgia, serif;
+  font-size: clamp(1.4rem, 4vw, 1.9rem);
+  color: #1A1916;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+  margin-bottom: 4px;
+  word-break: break-word;
+}
+
+.station-address {
+  font-size: 0.82rem;
+  color: #A8A69E;
+}
+
+.station-chips {
+  display: flex;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+
+.stat-chip {
+  flex: 1;
+  background: #F2F1ED;
+  border: 1px solid #E4E2DA;
+  border-radius: 10px;
+  padding: 10px 12px;
+  text-align: center;
+  min-width: 0;
+}
+
+.stat-chip-val {
+  font-family: 'Instrument Serif', Georgia, serif;
+  font-size: 1.5rem;
+  color: #1A1916;
+  line-height: 1;
+}
+
+.stat-chip-val.green { color: #16A34A; }
+.stat-chip-val.red   { color: #DC2626; }
+
+.stat-chip-label {
+  font-size: 0.62rem;
+  color: #A8A69E;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  margin-top: 2px;
+  white-space: nowrap;
+}
+
+/* ── Prese ── */
+.prese-section { padding: 1.75rem 2rem; }
+
+.prese-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 0.9rem;
+}
+
+@media (max-width: 600px) {
+  .prese-section { padding: 1.25rem 1rem; }
+  .station-header { padding: 1.25rem 1rem; }
+  .prese-grid { grid-template-columns: 1fr; }
+}
+
+.presa-card {
+  border-radius: 14px;
+  border: 1px solid #E4E2DA;
+  padding: 1.1rem 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  background: #FFFFFF;
+  transition: box-shadow 0.15s;
+}
+.presa-card:hover { box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04); }
+
+.presa-card.stato-libera   { border-color: #BBF7D0; background: #F0FDF4; }
+.presa-card.stato-occupata { border-color: #FECACA; background: #FEF2F2; }
+.presa-card.stato-offline  { background: #F2F1ED; opacity: 0.6; }
+
+.status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 2px; }
+.status-dot.green { background: #16A34A; }
+.status-dot.red   { background: #DC2626; }
+.status-dot.gray  { background: #D1D5DB; }
+
+.presa-info { flex: 1; min-width: 0; }
+
+.presa-name-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 3px;
+  flex-wrap: wrap;
+}
+
+.presa-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: #1A1916;
+}
+
+.presa-badge {
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 100px;
+  flex-shrink: 0;
+}
+
+.presa-badge.libera   { color: #15803D; background: #DCFCE7; }
+.presa-badge.occupata { color: #B91C1C; background: #FEE2E2; }
+.presa-badge.offline  { color: #9CA3AF; background: #F3F4F6; }
+
+.presa-power { font-size: 0.78rem; color: #A8A69E; margin-bottom: 2px; }
+.presa-id    { font-size: 0.58rem; color: #D1D0CA; font-family: monospace; word-break: break-all; }
+
+.scegli-btn {
+  background: #2A6B4A;
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  padding: 9px 16px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  box-shadow: 0 1px 6px rgba(42,107,74,0.2);
+  transition: background 0.15s, box-shadow 0.15s;
+}
+.scegli-btn:hover    { background: #1f5238; box-shadow: 0 3px 12px rgba(42,107,74,0.3); }
+.scegli-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* ── State boxes ── */
+.state-box {
+  padding: 4rem 2rem;
+  text-align: center;
+}
+.state-icon { font-size: 2.5rem; margin-bottom: 1rem; }
+.state-title {
+  font-family: 'Instrument Serif', Georgia, serif;
+  font-size: 1.2rem;
+  color: #1A1916;
+  margin-bottom: 6px;
+}
+.state-sub { font-size: 0.8rem; color: #A8A69E; line-height: 1.55; }
+
+/* ── Overlay codice monouso ── */
+.qr-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(26,25,22,0.6);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+}
+
+.qr-card {
+  background: #FFFFFF;
+  border: 1px solid #E4E2DA;
+  border-radius: 20px;
+  padding: 1.75rem;
+  width: 100%;
+  max-width: 390px;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.22), 0 4px 16px rgba(0,0,0,0.1);
+}
+
+.qr-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 1.25rem;
+  padding-bottom: 1.25rem;
+  border-bottom: 1px solid #E4E2DA;
+}
+
+.qr-icon-box {
+  width: 40px; height: 40px;
+  background: #EBF5EF;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.qr-title {
+  font-weight: 600;
+  font-size: 0.92rem;
+  color: #1A1916;
+  line-height: 1.2;
+}
+
+.qr-subtitle {
+  font-size: 0.76rem;
+  color: #A8A69E;
+  margin-top: 2px;
+}
+
+.qr-input-wrap {
+  border-radius: 12px;
+  background: #F2F1ED;
+  border: 1px solid #E4E2DA;
+  padding: 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.qr-input {
+  font-family: monospace;
+  font-size: 2rem;
+  letter-spacing: 0.6rem;
+  width: 100%;
+  text-align: center;
+  padding: 0.6rem;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #1A1916;
+}
+
+.qr-error {
+  color: #C0392B;
+  font-size: 0.76rem;
+  margin: -0.4rem 0 0.8rem;
+  text-align: center;
+}
+
+.qr-confirm { width: 100%; padding: 12px; margin-bottom: 0.4rem; }
+
+.qr-cancel-btn {
+  width: 100%;
+  padding: 12px;
+  background: #F2F1ED;
+  border: 1px solid #E4E2DA;
+  border-radius: 10px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: #6B6860;
+  cursor: pointer;
+}
+.qr-cancel-btn:hover { background: #E8E6E0; color: #1A1916; }

@@ -23,12 +23,18 @@ export default function LoginPage() {
       navigate(from, { replace: true });
     } catch (err) {
       const apiErrors = err.response?.data?.errors;
+      const data      = err.response?.data;
       if (apiErrors?.email) {
         setError(Array.isArray(apiErrors.email) ? apiErrors.email[0] : apiErrors.email);
       } else if (apiErrors?.password) {
         setError(Array.isArray(apiErrors.password) ? apiErrors.password[0] : apiErrors.password);
-      } else if (err.response?.data?.message) {
-        setError(err.response.data.message);
+      } else if (data?.message) {
+        // Se l'API espone i tentativi rimasti, lo aggiungiamo al messaggio
+        // (stessa UX del Blade: "Tentativi rimanenti: 3").
+        const tail = typeof data.tentativi_rimasti === 'number'
+          ? ` Tentativi rimanenti: ${data.tentativi_rimasti}.`
+          : '';
+        setError(data.message + tail);
       } else {
         setError('Errore di rete. Riprova.');
       }

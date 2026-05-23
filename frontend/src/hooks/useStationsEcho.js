@@ -34,7 +34,7 @@ export function useStationsEcho(initialStations) {
       echoRef.current = buildEcho();
       const channel = echoRef.current.channel('mappa');
 
-      // Stazione libera/occupata
+      // Stazione intera libera/occupata (flag aggregato lato server)
       channel.listen('.stazione.status', (e) => {
         setStations((prev) =>
           prev.map((s) =>
@@ -45,17 +45,36 @@ export function useStationsEcho(initialStations) {
         );
       });
 
-      // Stato hardware singolo punto di ricarica
+      // Cambio stato libero/occupato di un singolo punto di ricarica.
+      // Il colore della stazione viene poi ricalcolato da markerColor()
+      // sulla base dei punti aggiornati (vedi MapPage.jsx).
       channel.listen('.punto.status', (e) => {
         setStations((prev) =>
-          prev.map((s) => ({
-            ...s,
-            punti_ricarica: s.punti_ricarica?.map((p) =>
+          prev.map((s) => {
+            if (e.id_stazione && s.id_stazione !== e.id_stazione) return s;
+            const punti = s.punti_ricarica?.map((p) =>
+              p.id_punto === e.id_punto
+                ? { ...p, libera: e.libera ? 1 : 0 }
+                : p,
+            );
+            return { ...s, punti_ricarica: punti };
+          }),
+        );
+      });
+
+      // Cambio stato hardware (online/offline/guasto/manutenzione)
+      // di un singolo punto di ricarica.
+      channel.listen('.punto.hardware.status', (e) => {
+        setStations((prev) =>
+          prev.map((s) => {
+            if (e.id_stazione && s.id_stazione !== e.id_stazione) return s;
+            const punti = s.punti_ricarica?.map((p) =>
               p.id_punto === e.id_punto
                 ? { ...p, stato_hardware: e.stato_hardware }
                 : p,
-            ),
-          })),
+            );
+            return { ...s, punti_ricarica: punti };
+          }),
         );
       });
     } catch (err) {

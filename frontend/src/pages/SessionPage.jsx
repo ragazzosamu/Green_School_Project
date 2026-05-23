@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useSessionChannel } from '../hooks/useSessionChannel';
+import NavBar from '../components/NavBar';
 import apiClient from '../api/client';
 import './SessionPage.css';
 
@@ -36,7 +37,7 @@ function StatCard({ icon, label, value, unit, accent }) {
 }
 
 export default function SessionPage() {
-  const { user, token, logout } = useAuth();
+  const { user, token } = useAuth();
   const navigate = useNavigate();
 
   const [rawSession, setRawSession] = useState(null);
@@ -90,42 +91,29 @@ export default function SessionPage() {
 
   async function handleStop() {
     if (!session?.id_sessione) return;
+    // Stessa conferma esplicita del Blade (session-active.blade.php): la fine
+    // ricarica non e' reversibile, evitiamo click accidentali.
+    if (!window.confirm('Confermi di voler terminare la ricarica?')) return;
     setStopping(true);
     setStopError('');
     try {
       await apiClient.post(`/session/${session.id_sessione}/stop`);
-      navigate('/react/map');
+      navigate('/react/profilo');
     } catch (err) {
       setStopError(
-        err.response?.data?.message ?? 'Errore durante l\'interruzione. Riprova.',
+        err.response?.data?.error
+          ?? err.response?.data?.message
+          ?? 'Errore durante l\'interruzione. Riprova.',
       );
     } finally {
       setStopping(false);
     }
   }
 
-  async function handleLogout() {
-    await logout();
-    window.location.href = '/react/login';
-  }
-
   return (
     <div className="session-page">
       {/* Header */}
-      <header className="sp-header">
-        <Link to="/react/map" className="logo">
-          <div className="logo-mark">🌱</div>
-          <span className="logo-text">GreenSchool</span>
-        </Link>
-        <nav className="sp-nav">
-          <Link to="/react/map"      className="nav-link">🗺️ Mappa</Link>
-          <Link to="/react/profilo"  className="nav-link">👤 Profilo</Link>
-          {user?.ruolo === 'admin' && (
-            <Link to="/react/admin" className="nav-link" style={{ color: '#7C3AED' }}>⚙️ Admin</Link>
-          )}
-          <button onClick={handleLogout} className="logout-btn">Esci</button>
-        </nav>
-      </header>
+      <NavBar />
 
       <main className="sp-main">
         <div className="page-header">
@@ -195,15 +183,15 @@ export default function SessionPage() {
                 value={elapsed}
               />
               <StatCard
-                icon="🔋"
-                label="Potenza istantanea"
-                value={session.potenza_kw ?? '—'}
-                unit={session.potenza_kw ? 'kW' : ''}
+                icon="✨"
+                label="XP guadagnati"
+                value={`+${Math.max(5, Math.round((parseFloat(session.kwh) || 0) * 10))}`}
+                unit="XP"
               />
               <StatCard
-                icon="⚡"
-                label="Tensione"
-                value={session.voltaggio ? `${session.voltaggio} V` : '—'}
+                icon="📍"
+                label="Punto"
+                value={session.id_punto ?? '—'}
               />
             </div>
 

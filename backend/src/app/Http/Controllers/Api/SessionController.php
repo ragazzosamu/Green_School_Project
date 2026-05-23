@@ -168,4 +168,37 @@ class SessionController extends Controller
             'data_inizio' => $sessione->data_inizio,
         ], 200);
     }
+
+    /**
+     * GET /api/me/attesa-cavo?id_stazione=...
+     *
+     * Espone i secondi residui del rendez-vous codice->cavo (Redis,
+     * vedi SessioneService::secondiAttesaResidui). Serve a React per
+     * mostrare il banner "in attesa del cavo" con countdown — l'equivalente
+     * di quello che il Blade /profilo calcola server-side al render.
+     *
+     * Risposta:
+     *   { attesa: true,  id_stazione, secondi_residui }   se rendez-vous valido
+     *   { attesa: false }                                  altrimenti
+     */
+    public function AttesaCavo(Request $request): JsonResponse
+    {
+        $idStazione = $request->query('id_stazione');
+        if (! $idStazione) {
+            return response()->json(['attesa' => false], 200);
+        }
+
+        $userId   = $request->user()->id_utente;
+        $secondi  = $this->sessioni->secondiAttesaResidui($idStazione, $userId);
+
+        if ($secondi === null) {
+            return response()->json(['attesa' => false], 200);
+        }
+
+        return response()->json([
+            'attesa'           => true,
+            'id_stazione'      => $idStazione,
+            'secondi_residui'  => $secondi,
+        ], 200);
+    }
 }

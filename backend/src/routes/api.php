@@ -46,6 +46,10 @@ Route::middleware('auth:sanctum')->group(function () {
     // Polling: ha l'utente loggato una sessione attiva in questo momento?
     Route::get('/me/sessione-attiva', [SessionController::class, 'SessioneAttivaUtente']);
 
+    // Secondi residui del rendez-vous codice->cavo (Redis): usato dal banner
+    // "in attesa del cavo" in React. Blade lo legge gia' nella rotta /profilo.
+    Route::get('/me/attesa-cavo', [SessionController::class, 'AttesaCavo']);
+
     // Dettaglio sessione singola
     Route::get('/session/{id}',      [SessionController::class, 'show']);
     Route::post('/session/{id}/stop',[SessionController::class, 'InterrompiSessione']);
@@ -70,4 +74,5 @@ Route::middleware(['auth:sanctum', 'admin.api'])->prefix('admin')->group(functio
 
 // Nota: heartbeat e fine sessione passano da MQTT (worker mqtt:leggi), non
 // da HTTP. Non c'e' piu' un endpoint device-autenticato per la colonnina.
-Route::post("register", [App\Http\Controllers\Api\RegisterController::class, "register"]);
+// Registrazione utente da React (pubblica)
+Route::post('/register', [App\Http\Controllers\Api\RegisterController::class, 'register']);

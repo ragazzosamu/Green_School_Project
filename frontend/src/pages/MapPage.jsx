@@ -1,29 +1,41 @@
 import { useEffect, useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { MapContainer, TileLayer, CircleMarker, Popup } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
-import { useAuth } from '../context/AuthContext';
 import { useStationsEcho } from '../hooks/useStationsEcho';
+import NavBar from '../components/NavBar';
 import apiClient from '../api/client';
 import './MapPage.css';
 
-const DEFAULT_LAT  = 45.6713;
-const DEFAULT_LNG  = 11.9286;
+// Allineati a backend/src/config/map.php (Castelfranco)
+const DEFAULT_LAT  = 45.6722;
+const DEFAULT_LNG  = 11.9272;
 const DEFAULT_ZOOM = 14;
 
+// Stessa logica di map.blade.php → getStazioneColor():
+//   - grigio: nessun punto, oppure nessun punto online
+//   - verde : almeno un punto online + libero
+//   - rosso : altrimenti (tutti i punti online sono occupati)
 function markerColor(station) {
-  if (!station.attiva) return '#9CA3AF';
-  if (station.libera === false) return '#DC2626';
-  return '#16A34A';
+  const punti = station.punti_ricarica ?? [];
+  if (punti.length === 0) return '#9CA3AF';
+  const tuttiOffline = punti.every((p) => p.stato_hardware !== 'online');
+  if (tuttiOffline) return '#9CA3AF';
+  const haPuntiLiberi = punti.some(
+    (p) => Number(p.libera) === 1 && p.stato_hardware === 'online',
+  );
+  return haPuntiLiberi ? '#16A34A' : '#DC2626';
 }
 
 function markerLabel(station) {
-  if (!station.attiva) return 'Offline';
-  if (station.libera === false) return 'Occupata';
+  const c = markerColor(station);
+  if (c === '#9CA3AF') return 'Offline';
+  if (c === '#DC2626') return 'Occupata';
   return 'Libera';
 }
 
 export default function MapPage() {
-  const { logout, user } = useAuth();
+  const navigate = useNavigate();
   const [rawStations, setRawStations] = useState([]);
   const [loading, setLoading]         = useState(true);
   const [fetchError, setFetchError]   = useState('');
@@ -47,30 +59,12 @@ export default function MapPage() {
   useEffect(() => { loadStations(); }, [loadStations]);
 
   function handleStationClick(stationId) {
-    window.location.href = `/react/stazione/${stationId}`;
-  }
-
-  async function handleLogout() {
-    await logout();
-    window.location.href = '/react/login';
+    navigate(`/react/stazione/${stationId}`);
   }
 
   return (
     <div className="map-page">
-      <header className="map-header">
-        <a href="/" className="logo">
-          <div className="logo-mark">🌱</div>
-          <span className="logo-text">GreenSchool</span>
-        </a>
-        <nav className="map-nav">
-          <a href="/react/sessione"  className="nav-link">⚡ Sessione</a>
-          <a href="/react/profilo"   className="nav-link">👤 Profilo</a>
-          {user?.ruolo === 'admin' && (
-            <a href="/react/admin" className="nav-link" style={{ color: '#7C3AED' }}>⚙️ Admin</a>
-          )}
-          <button onClick={handleLogout} className="logout-btn">Esci</button>
-        </nav>
-      </header>
+      <NavBar />
 
       <main className="map-main">
         <div className="page-header">
