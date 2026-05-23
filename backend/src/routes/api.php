@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\SessionController;
 use App\Http\Controllers\Api\IotController;
 use App\Http\Controllers\Api\SchoolController;
 use App\Http\Controllers\Api\GamificationController;
+use App\Http\Controllers\Api\AdminApiController;
 
 // Healthcheck pubblico — usato dall'healthcheck Docker del container `app`.
 // Risponde 200 appena Laravel e' in piedi: non tocca il DB di proposito,
@@ -50,6 +51,21 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/session/{id}/stop',[SessionController::class, 'InterrompiSessione']);
 
     Route::post('/logout', [AuthController::class, 'logout']);
+});
+
+Route::middleware(['auth:sanctum', 'admin.api'])->prefix('admin')->group(function () {
+    Route::get('/dashboard',              [AdminApiController::class, 'dashboard']);
+    Route::get('/utenti',                 [AdminApiController::class, 'utenti']);
+    Route::get('/utenti/{id}',            [AdminApiController::class, 'dettaglioUtente']);
+    Route::put('/utenti/{id}',            [AdminApiController::class, 'modificaUtente']);
+    Route::post('/utenti/{id}/toggle',    [AdminApiController::class, 'toggleUtente']);
+    Route::post('/utenti/{id}/reset',     [AdminApiController::class, 'resetPassword']);
+    Route::get('/sessioni',               [AdminApiController::class, 'sessioni']);
+    Route::get('/stazioni',               [AdminApiController::class, 'stazioni']);
+    Route::post('/stazioni/{id}/toggle',  [AdminApiController::class, 'toggleStazione']);
+    Route::get('/stazioni/{id}/setup',    [AdminApiController::class, 'setupStazione']);
+    Route::post('/stazioni/{id}/setup',   [AdminApiController::class, 'completaSetupStazione']);
+    Route::get('/report/csv',             [AdminApiController::class, 'scaricaReportCsv']);
 });
 
 // Nota: heartbeat e fine sessione passano da MQTT (worker mqtt:leggi), non

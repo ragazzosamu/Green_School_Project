@@ -8,6 +8,8 @@ html { height: 100%; }
 
 body {
   height: 100%;
+  background: #F5F4F0;   /* fallback globale — ogni pagina lo sovrascrive col suo :root --bg */
+  color: #1A1916;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }

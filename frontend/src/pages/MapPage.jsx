@@ -63,11 +63,10 @@ export default function MapPage() {
           <span className="logo-text">GreenSchool</span>
         </a>
         <nav className="map-nav">
-          <a href="/react/classifica" className="nav-link">🏆 Classifica</a>
-         <a href="/react/scuola"     className="nav-link">🏫 Scuola</a>
-          <a href="/react/profilo"    className="nav-link">👤 Profilo</a>
-          {user?.is_admin &&  (
-            <a href="/react/admin"      className="nav-link nav-link--admin">⚙️ Admin</a>
+          <a href="/react/sessione"  className="nav-link">⚡ Sessione</a>
+          <a href="/react/profilo"   className="nav-link">👤 Profilo</a>
+          {user?.ruolo === 'admin' && (
+            <a href="/react/admin" className="nav-link" style={{ color: '#7C3AED' }}>⚙️ Admin</a>
           )}
           <button onClick={handleLogout} className="logout-btn">Esci</button>
         </nav>

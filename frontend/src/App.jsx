@@ -1,29 +1,45 @@
+// ── App.jsx aggiornato ───────────────────────────────────────────────────────
+// Aggiunge la rotta /react/admin protetta, visibile solo agli utenti admin.
+
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import PrivateRoute from './components/PrivateRoute';
-import LoginPage from './pages/LoginPage';
-import MapPage from './pages/MapPage';
+import LoginPage    from './pages/LoginPage';
+import MapPage      from './pages/MapPage';
+import SessionPage  from './pages/SessionPage';
+import ProfilePage  from './pages/ProfilePage';
+import AdminPage    from './pages/AdminPage';   // ← AGGIUNTO
 
 export default function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<Navigate to="/react/login" replace />} />
-          <Route path="/react" element={<Navigate to="/react/login" replace />} />
+          {/* Redirect radice */}
+          <Route path="/"       element={<Navigate to="/react/login" replace />} />
+          <Route path="/react"  element={<Navigate to="/react/login" replace />} />
 
-          {/* Rotte pubbliche */}
+          {/* Pubblica */}
           <Route path="/react/login" element={<LoginPage />} />
 
-          {/* Rotte protette */}
-          <Route
-            path="/react/map"
-            element={
-              <PrivateRoute>
-                <MapPage />
-              </PrivateRoute>
-            }
-          />
+          {/* Protette utente */}
+          <Route path="/react/map" element={
+            <PrivateRoute><MapPage /></PrivateRoute>
+          } />
+          <Route path="/react/sessione" element={
+            <PrivateRoute><SessionPage /></PrivateRoute>
+          } />
+          <Route path="/react/profilo" element={
+            <PrivateRoute><ProfilePage /></PrivateRoute>
+          } />
+
+          {/* Admin — accessibile solo se ruolo === 'admin' (il componente stesso fa il redirect) */}
+          <Route path="/react/admin" element={
+            <PrivateRoute><AdminPage /></PrivateRoute>
+          } />
+          <Route path="/react/admin/*" element={
+            <PrivateRoute><AdminPage /></PrivateRoute>
+          } />
 
           {/* Catch-all */}
           <Route path="*" element={<Navigate to="/react/login" replace />} />

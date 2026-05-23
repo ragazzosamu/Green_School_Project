@@ -112,7 +112,7 @@ class WebAuthController extends Controller
 
             if ($utente->login_tentativi >= self::MAX_TENTATIVI) {
                 // Tentativi esauriti: blocchiamo l'account per BLOCCO_MINUTI minuti.
-                $utente->login_bloccato_fino = Carbon::now()->addMinutes(self::MAX_TENTATIVI);
+                $utente->login_bloccato_fino = Carbon::now()->addMinutes(self::BLOCCO_MINUTI);
                 $utente->login_tentativi     = 0; // reset così il prossimo ciclo reinizia da 0
                 $utente->save();
 

@@ -30,7 +30,7 @@ class AuthController extends Controller
         // Creiamo il token Sanctum
         $token = $user->createToken('auth_token')->plainTextToken;
 
-        return response()->json([
+        /*return response()->json([
             'access_token' => $token,
             'token_type' => 'Bearer',
             'user' => [
@@ -39,7 +39,19 @@ class AuthController extends Controller
                 'email' => $user->email,
                 'tipo' => $user->tipo_account
             ]
-        ]);
+        ]);*/
+        return response()->json([
+    'access_token' => $token,
+    'token_type'   => 'Bearer',
+    'user'         => [
+        'id_utente' => $user->id_utente,
+        'nome'      => $user->nome,
+        'cognome'   => $user->cognome,
+        'email'     => $user->email,
+        'tipo'      => $user->tipo_account,
+        'ruolo'     => $user->ruolo,          // <── AGGIUNTO
+    ],
+]);
     }
 
     public function logout(Request $request)
