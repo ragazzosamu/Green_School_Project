@@ -70,3 +70,4 @@ Route::middleware(['auth:sanctum', 'admin.api'])->prefix('admin')->group(functio
 
 // Nota: heartbeat e fine sessione passano da MQTT (worker mqtt:leggi), non
 // da HTTP. Non c'e' piu' un endpoint device-autenticato per la colonnina.
+Route::post("register", [App\Http\Controllers\Api\RegisterController::class, "register"]);

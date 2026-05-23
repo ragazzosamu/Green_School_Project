@@ -20,6 +20,7 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware) {
         $middleware->alias([
         'admin' => \App\Http\Middleware\AdminMiddleware::class,
+        'admin.api' => \App\Http\Middleware\AdminApiMiddleware::class,
         'guest' => \App\Http\Middleware\RedirectIfAuthenticated::class,
     ]);
         // Fidiamoci dei proxy (ngrok, Cloudflare, reverse proxy locali ecc.).

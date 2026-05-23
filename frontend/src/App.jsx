@@ -1,6 +1,6 @@
 // ── App.jsx aggiornato ───────────────────────────────────────────────────────
 // Aggiunge la rotta /react/admin protetta, visibile solo agli utenti admin.
-
+import RegisterPage from './pages/RegisterPage';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import PrivateRoute from './components/PrivateRoute';
@@ -40,7 +40,7 @@ export default function App() {
           <Route path="/react/admin/*" element={
             <PrivateRoute><AdminPage /></PrivateRoute>
           } />
-
+<Route path="/react/register" element={<RegisterPage />} />
           {/* Catch-all */}
           <Route path="*" element={<Navigate to="/react/login" replace />} />
         </Routes>
