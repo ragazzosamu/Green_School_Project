@@ -110,8 +110,11 @@
             padding: 1rem 0.75rem;
             display: flex;
             flex-direction: column;
+            justify-content: flex-start;
+            align-items: stretch;
             gap: 2px;
             overflow-y: auto;
+            line-height: 1.2;
         }
 
         .sidebar-section {
@@ -121,6 +124,7 @@
             text-transform: uppercase;
             color: var(--text-3);
             padding: 0.75rem 0.5rem 0.35rem;
+            flex: 0 0 auto;
         }
 
         .sidebar-link {
@@ -134,6 +138,9 @@
             color: var(--text-2);
             text-decoration: none;
             transition: background 0.15s, color 0.15s;
+            height: 38px;
+            flex: 0 0 38px;
+            line-height: 1;
         }
 
         .sidebar-link:hover { background: var(--surface2); color: var(--text); }
@@ -147,9 +154,13 @@
         .sidebar-link-icon {
             font-size: 1rem;
             width: 20px;
-            text-align: center;
+            height: 20px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
             font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', 'DM Sans', sans-serif;
             line-height: 1;
+            flex-shrink: 0;
         }
 
         .sidebar-footer {

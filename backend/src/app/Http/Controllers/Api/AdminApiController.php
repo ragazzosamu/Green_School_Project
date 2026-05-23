@@ -228,6 +228,16 @@ class AdminApiController extends Controller
         $sessioni    = $query->select('s.*', 'u.nome', 'u.cognome', 'u.email')->paginate(20)->withQueryString();
         $listaUtenti = DB::table('utenti')->select('id_utente', 'nome', 'cognome', 'email')->orderBy('cognome')->get();
 
+        // Sessioni aperte -> quantita_kwh in DB e' 0 fino a sp_termina_sessione.
+        // Iniettiamo il valore "live" da Redis cosi' il pannello admin React
+        // mostra i kWh accumulati anche per le sessioni ancora in corso.
+        $sessioniService = app(\App\Services\SessioneService::class);
+        foreach ($sessioni->items() as $s) {
+            if ($s->data_fine === null) {
+                $s->quantita_kwh = $sessioniService->kwhCorrenti($s->id_sessione);
+            }
+        }
+
         return response()->json(['sessioni' => $sessioni, 'lista_utenti' => $listaUtenti]);
     }
 

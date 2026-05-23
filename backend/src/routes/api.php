@@ -16,8 +16,12 @@ use App\Http\Controllers\Api\AdminApiController;
 // bootstrap/app.php usa middleware 'web' (sessione + CSRF) ed e' quello che
 // usa Blade. React via Sanctum non ha sessione, percio' usa questo endpoint
 // alternativo /api/broadcasting/auth con auth:sanctum.
+// Nota: NIENTE 'prefix' => 'api' qui — withRouting() in bootstrap/app.php
+// applica gia' automaticamente il prefisso /api a tutto routes/api.php, e
+// aggiungerlo di nuovo creerebbe /api/api/broadcasting/auth (404 -> kWh
+// real-time non funziona).
 // Echo lato React deve puntare a `authEndpoint: '/api/broadcasting/auth'`.
-Broadcast::routes(['middleware' => ['auth:sanctum'], 'prefix' => 'api']);
+Broadcast::routes(['middleware' => ['auth:sanctum']]);
 
 // Healthcheck pubblico — usato dall'healthcheck Docker del container `app`.
 // Risponde 200 appena Laravel e' in piedi: non tocca il DB di proposito,

@@ -98,8 +98,14 @@
   padding: 1rem 0.75rem;
   display: flex;
   flex-direction: column;
+  justify-content: flex-start;   /* esplicito: NIENTE space-around/between */
+  align-items: stretch;
   gap: 2px;
   overflow-y: auto;
+  /* Le emoji color font hanno line-height intrinseco molto alto: senza
+     vincolarlo a livello container ogni riga del menu' diventa 80-100px
+     e gli item appaiono spaziatissimi nella verticale. */
+  line-height: 1.2;
 }
 
 .a-sidebar-section {
@@ -109,6 +115,7 @@
   text-transform: uppercase;
   color: var(--text-3);
   padding: 0.75rem 0.5rem 0.35rem;
+  flex: 0 0 auto;
 }
 
 .a-sidebar-link {
@@ -127,6 +134,11 @@
   text-align: left;
   font-family: inherit;
   transition: background 0.15s, color 0.15s;
+  /* Altezza fissa: garantisce che ogni voce sia 38px indipendentemente
+     dal line-height delle emoji o dal font caricato. */
+  height: 38px;
+  flex: 0 0 38px;
+  line-height: 1;
 }
 
 .a-sidebar-link:hover { background: var(--surface2); color: var(--text); }
@@ -137,9 +149,13 @@
 .a-sidebar-icon {
   font-size: 1rem;
   width: 20px;
-  text-align: center;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', 'DM Sans', sans-serif;
   line-height: 1;
+  flex-shrink: 0;
 }
 
 .a-sidebar-footer {

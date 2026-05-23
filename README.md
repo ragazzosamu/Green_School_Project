@@ -408,8 +408,10 @@ Oppure usa **MQTT Explorer** connettendoti a `localhost:1883`.
 
 ## 🧪 Guida ai Test API con Postman
 
-Usiamo un file JSON condiviso per le rotte. Grazie alle **variabili d'ambiente** e agli
-**script automatici**, non devi mai cambiare a mano gli URL o incollare i token.
+Il file [`Green_School_Project.postman_collection.json`](Green_School_Project.postman_collection.json)
+contiene **tutte le rotte** (auth, stations, session, school, gamification, admin, IoT,
+broadcasting, health) divise in **cartelle per area**, con variabili `{{api}}` /
+`{{token}}` / `{{id_*}}` che vengono iniettate automaticamente.
 
 ### 1. Setup ambiente (solo la prima volta)
 1. In alto a destra, clicca su **Environments**.
@@ -417,16 +419,62 @@ Usiamo un file JSON condiviso per le rotte. Grazie alle **variabili d'ambiente**
 3. Aggiungi la variabile `api` con **Initial Value** = `http://localhost/api`.
 4. Salva, poi seleziona `Sviluppo Locale` dal menu a tendina in alto a destra.
 
+> La collezione include comunque un default `api = http://localhost/api` a livello
+> collezione, quindi puoi anche saltare il punto 3 se ti basta lo sviluppo locale.
+
 ### 2. Importazione collezione
-1. Su Postman, clicca **Import** e trascina `postman/Green_School_Project.postman_collection.json`.
+1. Su Postman, clicca **Import** e trascina `Green_School_Project.postman_collection.json`.
 2. Se la avevi già, scegli **Replace**.
 3. Gli URL sono scritti come `{{api}}/NOME_ROTTA`: Postman sostituisce `{{api}}` da solo.
 
 ### 3. Autenticazione automatica (Login & Token)
-Il progetto usa **Laravel Sanctum**. Non serve copiare il token a mano:
-1. Apri la richiesta **Login** e clicca **Send**.
-2. Uno script salva automaticamente il token d'accesso.
-3. Da qui in poi tutte le rotte protette useranno il token in autonomia.
+Il progetto usa **Laravel Sanctum** con token Bearer:
+1. Apri **Auth → Login** (cambia email/password se servono altre credenziali) e clicca **Send**.
+2. Uno script di test salva automaticamente `access_token` nelle variabili di
+   ambiente e di collezione come `{{token}}`.
+3. Tutte le rotte protette (stations, session, school, gamification, admin) sono
+   configurate con auth Bearer di default a livello collezione: prendono `{{token}}`
+   in autonomia. Per le rotte pubbliche (login, register, iot/registra, health) c'e'
+   `"auth": { "type": "noauth" }` esplicito.
+
+### 4. Struttura cartelle
+
+| Cartella | Cosa contiene |
+|---|---|
+| **Auth** | `POST /login`, `POST /register`, `POST /logout` |
+| **Stations** | `GET /stations`, `GET /station/{id}` |
+| **Session** | flusso ricarica: `POST /verifica-codice`, `GET /me/sessione-attiva`, `GET /me/attesa-cavo`, `GET /session/{id}`, `POST /session/{id}/stop` |
+| **School** | `GET /school/profile`, `GET /school/consumption?anno=YYYY` |
+| **Gamification** | `profile`, `badges`, `leaderboard`, `sessioni`, `sfide` |
+| **Admin** | dashboard, utenti (CRUD + toggle/reset), sessioni, stazioni (toggle/setup), report CSV — protette da `auth:sanctum + admin.api` |
+| **IoT** | `POST /iot/registra` (registrazione colonnina, pubblico con password globale) |
+| **Realtime** | `POST /broadcasting/auth` per debug handshake canali privati (vedi sotto) |
+| **Health** | `GET /health` pubblico |
+
+### 5. Variabili di percorso (path params)
+
+Le rotte tipo `GET /station/{id}` usano placeholder `{{id_stazione}}`,
+`{{id_utente}}`, `{{id_sessione}}`. Settale al volo nel pannello **Variables** della
+collezione (o nell'environment) e tutte le request che le usano si aggiornano insieme.
+
+### 6. Testare l'handshake WebSocket (canali privati)
+
+I dati live (kWh durante la ricarica, eventi sessione) viaggiano via **Reverb** su
+canali privati `user.{id_utente}`. Echo prima di sottoscriversi chiama l'endpoint
+di autorizzazione `POST /api/broadcasting/auth` (vedi [ARCHITECTURE.md sezione C](ARCHITECTURE.md#c-websocket-reverb-broadcast-verso-il-browser)).
+
+Per simulare l'handshake da Postman:
+1. Esegui **Auth → Login** per ottenere il token.
+2. Apri **Realtime → POST /broadcasting/auth**.
+3. Il body urlencoded contiene `socket_id` (valore di esempio, in realta' lo genera
+   Reverb) e `channel_name=private-user.{{id_utente}}`. Setta `{{id_utente}}`.
+4. Clicca **Send**. Risposta attesa: `{"auth": "<chiave>:<hmac>"}` (200).
+5. Se ricevi 403, la closure in [`channels.php`](backend/src/routes/channels.php) ha
+   negato l'autorizzazione perche' stai chiedendo il canale di un altro utente.
+6. Se ricevi 404, il route non e' caricato: `docker compose exec app php artisan route:list --path=broadcasting` per controllare.
+
+Nota: in produzione l'endpoint non si chiama mai a mano, lo invoca Echo dal browser.
+Questa request serve solo per debugging del flusso di auth.
 
 ---
 

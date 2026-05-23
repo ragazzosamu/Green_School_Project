@@ -2,178 +2,473 @@
   "info": {
     "_postman_id": "e5256ca0-2c51-46d7-8cdc-da5b01d5bfbf",
     "name": "Green_School_Project",
-    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-    "_exporter_id": "54369759",
-    "_collection_link": "https://go.postman.co/collection/54369759-e5256ca0-2c51-46d7-8cdc-da5b01d5bfbf?source=collection_link"
+    "description": "Collection completa delle API GreenSchool. Variabili: {{api}} = base URL (es. http://localhost/api), {{token}} = Bearer Sanctum (impostato automaticamente dal Login).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
     {
-      "name": "Prendi tutte le stazioni",
-      "protocolProfileBehavior": {
-        "disableBodyPruning": true
-      },
-      "request": {
-        "method": "GET",
-        "header": [],
-        "body": {
-          "mode": "raw",
-          "raw": "",
-          "options": {
-            "raw": {
-              "language": "json"
-            }
-          }
-        },
-        "url": {
-          "raw": "{{api}}/stations",
-          "host": [
-            "{{api}}"
-          ],
-          "path": [
-            "stations"
-          ]
-        }
-      },
-      "response": []
-    },
-    {
-      "name": "Prendi stazione con ID",
-      "protocolProfileBehavior": {
-        "disableBodyPruning": true
-      },
-      "request": {
-        "method": "GET",
-        "header": [],
-        "body": {
-          "mode": "raw",
-          "raw": "",
-          "options": {
-            "raw": {
-              "language": "json"
-            }
-          }
-        },
-        "url": {
-          "raw": "{{api}}/station/c1d1d1c3-2806-3007-8f48-33f2b28c4839",
-          "host": [
-            "{{api}}"
-          ],
-          "path": [
-            "station",
-            "c1d1d1c3-2806-3007-8f48-33f2b28c4839"
-          ]
-        }
-      },
-      "response": []
-    },
-    {
-      "name": "Login",
-      "event": [
+      "name": "Auth",
+      "item": [
         {
-          "listen": "test",
-          "script": {
-            "exec": [
-              "// 1. Converti la risposta in un oggetto JSON\r",
-              "const jsonData = pm.response.json();\r",
-              "\r",
-              "// 2. Estrai il token (modifica 'access_token' in base a come risponde la tua API)\r",
-              "// Esempi comuni: jsonData.token oppure jsonData.data.token\r",
-              "const token = jsonData.access_token;\r",
-              "\r",
-              "// 3. Salva il token in una variabile d'ambiente\r",
-              "if (token) {\r",
-              "    pm.environment.set(\"token\", token);\r",
-              "    console.log(\"Token salvato con successo!\");\r",
-              "} else {\r",
-              "    console.warn(\"Token non trovato nella risposta!\");\r",
-              "}"
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const jsonData = pm.response.json();",
+                  "const token = jsonData.access_token;",
+                  "if (token) {",
+                  "    pm.environment.set(\"token\", token);",
+                  "    pm.collectionVariables.set(\"token\", token);",
+                  "    console.log(\"Token salvato.\");",
+                  "} else {",
+                  "    console.warn(\"Token non trovato.\");",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json" }
             ],
-            "type": "text/javascript",
-            "packages": {},
-            "requests": {}
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"test.test@email.it\",\n  \"password\": \"password123\"\n}"
+            },
+            "url": { "raw": "{{api}}/login", "host": ["{{api}}"], "path": ["login"] }
+          }
+        },
+        {
+          "name": "Register",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"Mario\",\n  \"cognome\": \"Rossi\",\n  \"email\": \"mario.rossi@scuola.it\",\n  \"cellulare\": \"+39 333 1234567\",\n  \"password\": \"password123\",\n  \"password_confirmation\": \"password123\"\n}"
+            },
+            "url": { "raw": "{{api}}/register", "host": ["{{api}}"], "path": ["register"] }
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{api}}/logout", "host": ["{{api}}"], "path": ["logout"] }
           }
         }
-      ],
-      "request": {
-        "method": "POST",
-        "header": [],
-        "body": {
-          "mode": "raw",
-          "raw": "{\r\n    \"email\": \"test.test@email.it\",\r\n    \"password\": \"password123\"\r\n\r\n}",
-          "options": {
-            "raw": {
-              "language": "json"
+      ]
+    },
+    {
+      "name": "Stations",
+      "item": [
+        {
+          "name": "GET /stations (lista)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{api}}/stations", "host": ["{{api}}"], "path": ["stations"] }
+          }
+        },
+        {
+          "name": "GET /station/{id}",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{api}}/station/{{id_stazione}}",
+              "host": ["{{api}}"],
+              "path": ["station", "{{id_stazione}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Session",
+      "item": [
+        {
+          "name": "POST /verifica-codice",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"codice\": \"123456\"\n}" },
+            "url": { "raw": "{{api}}/verifica-codice", "host": ["{{api}}"], "path": ["verifica-codice"] }
+          }
+        },
+        {
+          "name": "GET /me/sessione-attiva",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{api}}/me/sessione-attiva", "host": ["{{api}}"], "path": ["me", "sessione-attiva"] }
+          }
+        },
+        {
+          "name": "GET /me/attesa-cavo",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{api}}/me/attesa-cavo?id_stazione={{id_stazione}}",
+              "host": ["{{api}}"],
+              "path": ["me", "attesa-cavo"],
+              "query": [{ "key": "id_stazione", "value": "{{id_stazione}}" }]
             }
           }
         },
-        "url": {
-          "raw": "{{api}}/login",
-          "host": [
-            "{{api}}"
-          ],
-          "path": [
-            "login"
-          ]
+        {
+          "name": "GET /session/{id}",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{api}}/session/{{id_sessione}}",
+              "host": ["{{api}}"],
+              "path": ["session", "{{id_sessione}}"]
+            }
+          }
+        },
+        {
+          "name": "POST /session/{id}/stop",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{api}}/session/{{id_sessione}}/stop",
+              "host": ["{{api}}"],
+              "path": ["session", "{{id_sessione}}", "stop"]
+            }
+          }
         }
-      },
-      "response": []
+      ]
     },
     {
-      "name": "Logout",
-      "request": {
-        "method": "POST",
-        "header": [],
-        "url": {
-          "raw": "{{api}}/logout",
-          "host": [
-            "{{api}}"
-          ],
-          "path": [
-            "logout"
-          ]
+      "name": "School",
+      "item": [
+        {
+          "name": "GET /school/profile",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{api}}/school/profile", "host": ["{{api}}"], "path": ["school", "profile"] }
+          }
+        },
+        {
+          "name": "GET /school/consumption?anno=YYYY",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{api}}/school/consumption?anno=2026",
+              "host": ["{{api}}"],
+              "path": ["school", "consumption"],
+              "query": [{ "key": "anno", "value": "2026" }]
+            }
+          }
         }
-      },
-      "response": []
+      ]
+    },
+    {
+      "name": "Gamification",
+      "item": [
+        {
+          "name": "GET /gamification/profile",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{api}}/gamification/profile", "host": ["{{api}}"], "path": ["gamification", "profile"] }
+          }
+        },
+        {
+          "name": "GET /gamification/badges",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{api}}/gamification/badges", "host": ["{{api}}"], "path": ["gamification", "badges"] }
+          }
+        },
+        {
+          "name": "GET /gamification/leaderboard",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{api}}/gamification/leaderboard", "host": ["{{api}}"], "path": ["gamification", "leaderboard"] }
+          }
+        },
+        {
+          "name": "GET /gamification/sessioni",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{api}}/gamification/sessioni", "host": ["{{api}}"], "path": ["gamification", "sessioni"] }
+          }
+        },
+        {
+          "name": "GET /gamification/sfide",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{api}}/gamification/sfide", "host": ["{{api}}"], "path": ["gamification", "sfide"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin (admin.api middleware)",
+      "item": [
+        {
+          "name": "GET /admin/dashboard",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{api}}/admin/dashboard", "host": ["{{api}}"], "path": ["admin", "dashboard"] }
+          }
+        },
+        {
+          "name": "GET /admin/utenti",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{api}}/admin/utenti", "host": ["{{api}}"], "path": ["admin", "utenti"] }
+          }
+        },
+        {
+          "name": "GET /admin/utenti/{id}",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{api}}/admin/utenti/{{id_utente}}",
+              "host": ["{{api}}"],
+              "path": ["admin", "utenti", "{{id_utente}}"]
+            }
+          }
+        },
+        {
+          "name": "PUT /admin/utenti/{id}",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"Mario\",\n  \"cognome\": \"Rossi\",\n  \"email\": \"mario.rossi@scuola.it\",\n  \"cellulare\": \"+39 333 1234567\",\n  \"ruolo\": \"utente\"\n}"
+            },
+            "url": {
+              "raw": "{{api}}/admin/utenti/{{id_utente}}",
+              "host": ["{{api}}"],
+              "path": ["admin", "utenti", "{{id_utente}}"]
+            }
+          }
+        },
+        {
+          "name": "POST /admin/utenti/{id}/toggle",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{api}}/admin/utenti/{{id_utente}}/toggle",
+              "host": ["{{api}}"],
+              "path": ["admin", "utenti", "{{id_utente}}", "toggle"]
+            }
+          }
+        },
+        {
+          "name": "POST /admin/utenti/{id}/reset",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"password\": \"nuova_password\",\n  \"password_confirmation\": \"nuova_password\"\n}"
+            },
+            "url": {
+              "raw": "{{api}}/admin/utenti/{{id_utente}}/reset",
+              "host": ["{{api}}"],
+              "path": ["admin", "utenti", "{{id_utente}}", "reset"]
+            }
+          }
+        },
+        {
+          "name": "GET /admin/sessioni",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{api}}/admin/sessioni?cerca=&stato=",
+              "host": ["{{api}}"],
+              "path": ["admin", "sessioni"],
+              "query": [
+                { "key": "cerca", "value": "" },
+                { "key": "stato", "value": "", "description": "vuoto | attiva | conclusa" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /admin/stazioni",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{api}}/admin/stazioni", "host": ["{{api}}"], "path": ["admin", "stazioni"] }
+          }
+        },
+        {
+          "name": "POST /admin/stazioni/{id}/toggle (manutenzione)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{api}}/admin/stazioni/{{id_stazione}}/toggle",
+              "host": ["{{api}}"],
+              "path": ["admin", "stazioni", "{{id_stazione}}", "toggle"]
+            }
+          }
+        },
+        {
+          "name": "GET /admin/stazioni/{id}/setup",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{api}}/admin/stazioni/{{id_stazione}}/setup",
+              "host": ["{{api}}"],
+              "path": ["admin", "stazioni", "{{id_stazione}}", "setup"]
+            }
+          }
+        },
+        {
+          "name": "POST /admin/stazioni/{id}/setup (completa)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"Liceo Giorgione\",\n  \"indirizzo\": \"Via G. Verdi 25\",\n  \"latitudine\": 45.6722,\n  \"longitudine\": 11.9272\n}"
+            },
+            "url": {
+              "raw": "{{api}}/admin/stazioni/{{id_stazione}}/setup",
+              "host": ["{{api}}"],
+              "path": ["admin", "stazioni", "{{id_stazione}}", "setup"]
+            }
+          }
+        },
+        {
+          "name": "GET /admin/report/csv",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "text/csv" }],
+            "url": {
+              "raw": "{{api}}/admin/report/csv?id_utente=&giorno=",
+              "host": ["{{api}}"],
+              "path": ["admin", "report", "csv"],
+              "query": [
+                { "key": "id_utente", "value": "", "description": "filtro opzionale" },
+                { "key": "giorno", "value": "", "description": "YYYY-MM-DD, opzionale" }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "IoT (device-side)",
+      "item": [
+        {
+          "name": "POST /iot/registra (pubblico, password globale)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mac_address\": \"AA:BB:CC:DD:EE:06\",\n  \"password_globale\": \"PASSWORD_IOT_GLOBALE\",\n  \"prese\": [\n    { \"identificativo_fisico\": \"P1\", \"potenza_max_kw\": 7.4 }\n  ]\n}"
+            },
+            "url": { "raw": "{{api}}/iot/registra", "host": ["{{api}}"], "path": ["iot", "registra"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Realtime (WebSocket auth)",
+      "item": [
+        {
+          "name": "POST /broadcasting/auth (handshake canali privati)",
+          "description": "Echo lato React chiama questo endpoint per autorizzare la sottoscrizione a un PrivateChannel (es. user.{id}). Solitamente lo fa Echo da solo: questa request serve solo a debugging.",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "socket_id", "value": "12345.67890" },
+                { "key": "channel_name", "value": "private-user.{{id_utente}}" }
+              ]
+            },
+            "url": {
+              "raw": "{{api}}/broadcasting/auth",
+              "host": ["{{api}}"],
+              "path": ["broadcasting", "auth"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "GET /health",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": { "raw": "{{api}}/health", "host": ["{{api}}"], "path": ["health"] }
+          }
+        }
+      ]
     }
   ],
   "auth": {
     "type": "bearer",
     "bearer": [
-      {
-        "key": "token",
-        "value": "{{token}}",
-        "type": "string"
-      }
+      { "key": "token", "value": "{{token}}", "type": "string" }
     ]
   },
-  "event": [
-    {
-      "listen": "prerequest",
-      "script": {
-        "type": "text/javascript",
-        "packages": {},
-        "requests": {},
-        "exec": [
-          ""
-        ]
-      }
-    },
-    {
-      "listen": "test",
-      "script": {
-        "type": "text/javascript",
-        "packages": {},
-        "requests": {},
-        "exec": [
-          ""
-        ]
-      }
-    }
-  ],
   "variable": [
-    {
-      "key": "token",
-      "value": ""
-    }
+    { "key": "api",          "value": "http://localhost/api", "type": "string" },
+    { "key": "token",        "value": "",                     "type": "string" },
+    { "key": "id_utente",    "value": "",                     "type": "string" },
+    { "key": "id_stazione",  "value": "",                     "type": "string" },
+    { "key": "id_sessione",  "value": "",                     "type": "string" }
   ]
 }

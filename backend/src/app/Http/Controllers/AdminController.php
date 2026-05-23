@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Events\StazioneStatusChanged;
 use App\Models\Utenti;
 use App\Services\MqttService;
+use App\Services\SessioneService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -93,6 +94,17 @@ class AdminController extends Controller
             ->limit(10)
             ->select('s.*', 'u.nome', 'u.cognome', 'u.email', 'p.id_punto')
             ->get();
+
+        // Per le sessioni ancora aperte (data_fine NULL) il DB ha quantita_kwh=0
+        // fino a sp_termina_sessione. I kWh "live" stanno in Redis (vedi
+        // SessioneService::kwhCorrenti) -> li iniettiamo qui cosi' il blade
+        // puo' mostrarli senza dover fare polling lato client.
+        $sessioniService = app(SessioneService::class);
+        foreach ($ultimeSessioni as $s) {
+            if ($s->data_fine === null) {
+                $s->quantita_kwh = $sessioniService->kwhCorrenti($s->id_sessione);
+            }
+        }
 
         return view('admin.dashboard', compact('stats', 'sessioniSettimana', 'topUtenti', 'ultimeSessioni'));
     }
@@ -228,6 +240,16 @@ class AdminController extends Controller
         }
 
         $sessioni = $query->paginate(10)->withQueryString();
+
+        // Iniettiamo kWh "live" da Redis per le sessioni ancora aperte:
+        // sul DB quantita_kwh resta 0 fino a sp_termina_sessione, quindi
+        // l'admin vedrebbe sempre — invece dei kWh erogati nel frattempo.
+        $sessioniService = app(SessioneService::class);
+        foreach ($sessioni as $s) {
+            if ($s->data_fine === null) {
+                $s->quantita_kwh = $sessioniService->kwhCorrenti($s->id_sessione);
+            }
+        }
 
         //AGGIUNGI QUESTA RIGA: Prende gli utenti unici per il menu a tendina dei report
         $listaUtenti = DB::table('utenti')->select('id_utente', 'nome', 'cognome', 'email')->orderBy('cognome')->get();
