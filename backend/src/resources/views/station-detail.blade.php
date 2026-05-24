@@ -117,7 +117,7 @@
     }
 
     /* ── QR SCANNER OVERLAY ── */
-    #qr-reader-container {
+    #codice-modal-container {
         position: fixed;
         inset: 0;
         background: rgba(26,25,22,0.6);
@@ -131,14 +131,14 @@
         animation: overlayIn 0.2s ease both;
     }
 
-    #qr-reader-container.hidden { display: none; }
+    #codice-modal-container.hidden { display: none; }
 
     @keyframes overlayIn {
         from { opacity:0; }
         to   { opacity:1; }
     }
 
-    .qr-card {
+    .codice-card {
         background: var(--surface);
         border: 1px solid var(--border);
         border-radius: 20px;
@@ -146,15 +146,15 @@
         width: 100%;
         max-width: 390px;
         box-shadow: 0 24px 64px rgba(0,0,0,0.22), 0 4px 16px rgba(0,0,0,0.1);
-        animation: qrCardIn 0.3s cubic-bezier(0.16,1,0.3,1) both;
+        animation: codiceCardIn 0.3s cubic-bezier(0.16,1,0.3,1) both;
     }
 
-    @keyframes qrCardIn {
+    @keyframes codiceCardIn {
         from { opacity:0; transform: scale(0.95) translateY(10px); }
         to   { opacity:1; transform: scale(1) translateY(0); }
     }
 
-    .qr-header {
+    .codice-header {
         display: flex;
         align-items: center;
         gap: 12px;
@@ -163,7 +163,7 @@
         border-bottom: 1px solid var(--border);
     }
 
-    .qr-icon-box {
+    .codice-icon-box {
         width: 40px; height: 40px;
         background: var(--accent-bg);
         border-radius: 10px;
@@ -174,7 +174,7 @@
         flex-shrink: 0;
     }
 
-    .qr-title {
+    .codice-title {
         font-family: 'Geist', sans-serif;
         font-weight: 600;
         font-size: 0.92rem;
@@ -182,13 +182,13 @@
         line-height: 1.2;
     }
 
-    .qr-subtitle {
+    .codice-subtitle {
         font-size: 0.76rem;
         color: var(--text-3);
         margin-top: 2px;
     }
 
-    .qr-camera-wrap {
+    .codice-form-wrap {
         border-radius: 12px;
         overflow: hidden;
         background: #F2F1ED;
@@ -232,7 +232,7 @@
         100% { top:85%; opacity:0; }
     }
 
-    .qr-cancel-btn {
+    .codice-cancel-btn {
         width: 100%;
         padding: 12px;
         background: var(--surface2);
@@ -245,7 +245,7 @@
         cursor: pointer;
         transition: all 0.15s;
     }
-    .qr-cancel-btn:hover { background: #E8E6E0; color: var(--text); }
+    .codice-cancel-btn:hover { background: #E8E6E0; color: var(--text); }
 
     /* ── PRESE ── */
     .prese-section { padding: 1.75rem 2rem; }
@@ -366,24 +366,24 @@
     </div>
 
     <!-- Input codice monouso -->
-    <div id="qr-reader-container" class="hidden">
-        <div class="qr-card">
-            <div class="qr-header">
-                <div class="qr-icon-box">#</div>
+    <div id="codice-modal-container" class="hidden">
+        <div class="codice-card">
+            <div class="codice-header">
+                <div class="codice-icon-box">#</div>
                 <div>
-                    <p class="qr-title">Inserisci codice monouso</p>
-                    <p class="qr-subtitle">6 cifre mostrate sul display della colonnina (un codice per stazione, valido per 60s)</p>
+                    <p class="codice-title">Inserisci codice monouso</p>
+                    <p class="codice-subtitle">6 cifre mostrate sul display della colonnina (un codice per stazione, valido per 60s)</p>
                 </div>
             </div>
 
-            <div class="qr-camera-wrap" style="padding:1.5rem;">
+            <div class="codice-form-wrap" style="padding:1.5rem;">
                 <input id="codice-input" maxlength="6" inputmode="numeric" autocomplete="one-time-code"
                        placeholder="------"
                        style="font-family:monospace;font-size:2rem;letter-spacing:0.6rem;width:100%;text-align:center;padding:0.6rem;">
             </div>
 
             <button onclick="inviaCodice()" class="scegli-btn" style="width:100%;margin-bottom:0.4rem;">Conferma</button>
-            <button onclick="chiudiScanner()" class="qr-cancel-btn">Annulla</button>
+            <button onclick="chiudiScanner()" class="codice-cancel-btn">Annulla</button>
         </div>
     </div>
 
@@ -441,14 +441,14 @@
 
     function apriInputCodice(idPunto) {
         puntoCorrente = idPunto;
-        document.getElementById('qr-reader-container').classList.remove('hidden');
+        document.getElementById('codice-modal-container').classList.remove('hidden');
         const inp = document.getElementById('codice-input');
         inp.value = '';
         setTimeout(() => inp.focus(), 50);
     }
 
     function chiudiScanner() {
-        document.getElementById('qr-reader-container').classList.add('hidden');
+        document.getElementById('codice-modal-container').classList.add('hidden');
     }
 
     async function inviaCodice() {
@@ -459,7 +459,8 @@
         }
 
         try {
-            const response = await fetch('/api/verifica-codice', {
+            const idStazione = @json($stazione->id_stazione);
+            const response = await fetch(`/api/${encodeURIComponent(idStazione)}/verifica-codice`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

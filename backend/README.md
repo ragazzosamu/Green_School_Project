@@ -16,16 +16,18 @@ colonnine (via **MQTT**) e gli aggiornamenti in tempo reale verso il browser (vi
 1. [Cosa fa il backend](#-cosa-fa-il-backend)
 2. [Processi (container)](#-processi-container)
 3. [API REST — tutte le rotte](#-api-rest--tutte-le-rotte)
-4. [Controller — uno per uno](#-controller--uno-per-uno)
-5. [Models — uno per uno](#-models--uno-per-uno)
-6. [Services — logica di dominio](#-services--logica-di-dominio)
-7. [Console Commands — worker permanenti](#-console-commands--worker-permanenti)
-8. [Events — broadcast WebSocket](#-events--broadcast-websocket)
-9. [Middleware](#-middleware)
-10. [Routes, channels, broadcasting](#-routes-channels-broadcasting)
-11. [Database, seeders, stored procedure](#-database-seeders-stored-procedure)
-12. [Concetti chiave](#-concetti-chiave)
-13. [Comandi artisan utili](#-comandi-artisan-utili)
+4. [Autenticazione](#-autenticazione)
+5. [Flusso completo di una ricarica (lato API)](#-flusso-completo-di-una-ricarica-lato-api)
+6. [Controller — uno per uno](#-controller--uno-per-uno)
+7. [Models — uno per uno](#-models--uno-per-uno)
+8. [Services — logica di dominio](#-services--logica-di-dominio)
+9. [Console Commands — worker permanenti](#-console-commands--worker-permanenti)
+10. [Events — broadcast WebSocket](#-events--broadcast-websocket)
+11. [Middleware](#-middleware)
+12. [Routes, channels, broadcasting](#-routes-channels-broadcasting)
+13. [Database, seeders, stored procedure](#-database-seeders-stored-procedure)
+14. [Concetti chiave](#-concetti-chiave)
+15. [Comandi artisan utili](#-comandi-artisan-utili)
 
 ---
 
@@ -83,7 +85,7 @@ La collezione Postman pronta all'uso sta nella root: [`Green_School_Project.post
 **Sessione di ricarica**
 | Metodo | Rotta | Cosa fa |
 |---|---|---|
-| `POST` | `/verifica-codice` | Verifica codice 6 cifre → memorizza rendez-vous su Redis (60s). Risposta 202. |
+| `POST` | `/{id_stazione}/verifica-codice` | Verifica codice 6 cifre **per quella stazione** → memorizza rendez-vous su Redis (60s). Risposta 202. L'`id_stazione` (MAC) è nel path: il client lo conosce perché ha aperto il dettaglio della stazione. |
 | `GET`  | `/me/sessione-attiva` | Sessione attualmente attiva dell'utente (con kWh live da Redis). |
 | `GET`  | `/me/attesa-cavo` | Secondi residui del rendez-vous codice→cavo per il banner UI. |
 | `GET`  | `/session/{id}` | Stato di una sessione (kWh attuali, durata). |
@@ -132,6 +134,166 @@ La collezione Postman pronta all'uso sta nella root: [`Green_School_Project.post
 
 ---
 
+## 🔐 Autenticazione
+
+Il backend gestisce **tre tipi di client diversi** — utente web, utente React, colonnina
+IoT — e per ognuno ha un meccanismo di auth dedicato. Tutti convivono nello stesso
+Laravel grazie al sistema **multi-guard**.
+
+### Quadro d'insieme
+
+| Tipo di client       | Meccanismo                            | Dove si vede nel codice                 | Sopravvive al refresh? |
+|----------------------|---------------------------------------|------------------------------------------|------------------------|
+| Browser Blade (`/login`) | Sessione cookie + CSRF             | Guard `web`, `WebAuthController`         | Sì (cookie httpOnly)   |
+| React (SPA)              | Token Bearer **Sanctum**           | Guard `sanctum`, `Api\AuthController`    | Sì (`localStorage`)    |
+| Colonnina (ESP32 / sim)  | Password globale `IOT_REGISTRATION_PASSWORD` + MAC | `Api\IotController::Registra()`         | Una sola volta: poi solo MQTT |
+| Postman / `curl`         | Stesso Sanctum del React           | `POST /api/login` → `Authorization: Bearer …` | Sì, finché non fai logout |
+
+> Sanctum **non è OAuth**: è un emettitore di token opaco. Quando fai login, Laravel
+> crea una riga in `personal_access_tokens` con un hash del token; il client deve
+> rispedire la stringa originale nell'header `Authorization`. Niente refresh-token,
+> niente scadenza automatica: il token vive finché non chiami `/logout` o non lo
+> revochi a mano.
+
+### 1. Login utente (Blade o API) — `POST /login` e `POST /api/login`
+
+Sono **due rotte distinte** che fanno cose simili ma per client diversi:
+
+| | `POST /login` (Blade) | `POST /api/login` (Sanctum) |
+|---|---|---|
+| Controller | `WebAuthController::login` | `Api\AuthController::login` |
+| Risponde | Redirect 302 + cookie sessione | JSON `{ access_token, token_type, user }` |
+| Usato da | Form HTML dentro il sito | React, Postman, Python |
+| Persiste | Cookie httpOnly `green_school_session` | Header `Authorization: Bearer <token>` |
+
+Body atteso da entrambe:
+```json
+{ "email": "test.test@email.it", "password": "password123" }
+```
+
+**Trucco interno**: `WebAuthController::login` dopo l'auth via sessione crea **anche**
+un token Sanctum e lo salva in `session('api_token')`. Serve al JS dentro le Blade
+(mappa, profilo) per chiamare le API JSON come fa React, senza dover loggare due volte.
+
+### 2. Difese contro brute force
+
+Stesso codice in entrambi i controller:
+
+- **Lockout dopo 5 tentativi falliti** → `login_bloccato_fino = now() + 15 minuti`.
+- Il counter `login_tentativi` si azzera ad ogni login riuscito.
+- Risposta in caso di blocco: **HTTP 429** con `Retry-After: <secondi>`.
+- Check `attivo`: se un admin ha disabilitato l'utente (`/admin/utenti/{id}/toggle`),
+  qualsiasi login fallisce con **HTTP 403**.
+
+### 3. Usare il token Sanctum (per client API)
+
+Una volta ottenuto `access_token` da `POST /api/login`:
+
+```http
+POST /api/stations HTTP/1.1
+Authorization: Bearer 7|AbCdEf...XyZ
+Accept: application/json
+```
+
+Senza il header → **HTTP 401 Unauthenticated**.
+Token errato/revocato → **HTTP 401 Unauthenticated**.
+Token valido ma rotta admin senza ruolo admin → **HTTP 403 Forbidden** (vedi middleware
+[`AdminApiMiddleware`](src/app/Http/Middleware/AdminApiMiddleware.php)).
+
+`POST /api/logout` revoca **solo il token corrente** (`$user->currentAccessToken()->delete()`).
+Token diversi dello stesso utente (es. mobile + Postman) restano validi.
+
+### 4. Registrazione colonnina — `POST /api/iot/registra`
+
+L'unica rotta che la colonnina chiama via HTTP. È pubblica perché l'ESP32 al primo
+boot non ha credenziali, ma è protetta da:
+
+- **Password globale** `IOT_REGISTRATION_PASSWORD` (vedi `.env` backend e
+  `simulatore/params/worker-N.env`: i due valori **devono coincidere**, altrimenti
+  401 `Password registrazione non valida`).
+- **MAC address** come identificativo della colonnina: se è la prima volta che vede
+  quel MAC, Laravel crea il record `stazioni` con `stato_setup='in_setup'`. Se il MAC
+  esiste già, restituisce l'`id_stazione` esistente (registrazione idempotente).
+
+Body atteso:
+```json
+{ "mac_address": "AA:BB:CC:DD:EE:01", "numero_punti": 2,
+  "password_registrazione": "greenschool-iot-2025" }
+```
+
+> Dopo questa singola chiamata HTTP la colonnina **non parla più HTTP**: tutto il resto
+> (heartbeat, telemetria, eventi, comandi) viaggia su MQTT. Vedi
+> [`simulatore/README.md`](../simulatore/README.md) per il dettaglio dei topic.
+
+### 5. Auth dei canali WebSocket privati
+
+I dati live (kWh durante la ricarica, eventi sessione) viaggiano su Reverb su canali
+**privati** `private-user.{id_utente}`. Echo, prima di sottoscriversi, chiama un
+endpoint di auth che restituisce una firma HMAC se l'utente ha diritto al canale.
+
+Esistono **due endpoint** che puntano alla stessa closure di [`channels.php`](src/routes/channels.php):
+
+| Endpoint | Middleware | Usato da |
+|---|---|---|
+| `POST /broadcasting/auth` | `web` (sessione + CSRF) | Blade — Echo legge il cookie di sessione |
+| `POST /api/broadcasting/auth` | `auth:sanctum` (Bearer token) | React — Echo invia `Authorization: Bearer …` |
+
+La closure è una sola:
+```php
+Broadcast::channel('user.{id_utente}', function ($user, $id_utente) {
+    return (string) $user->id_utente === (string) $id_utente;
+});
+```
+
+Quindi un utente può sottoscriversi SOLO al canale che porta il suo id. Tentativi su
+canali altrui → **HTTP 403**.
+
+### 6. Pannello admin
+
+Due middleware, stessa logica:
+
+- **`admin`** (`AdminMiddleware`): per le rotte Blade `/admin/*`. Render di errore HTML
+  con `abort(403)`.
+- **`admin.api`** (`AdminApiMiddleware`): per le rotte API `/api/admin/*`. Risponde
+  JSON `{ error: 'forbidden' }` con HTTP 403.
+
+Entrambi controllano `Auth::user()->ruolo === 'admin'`. Per promuovere un utente non
+c'è un endpoint dedicato: si modifica direttamente in DB o via Tinker.
+
+```bash
+docker exec -it green_app php artisan tinker
+> App\Models\Utenti::where('email','x@y.it')->update(['ruolo'=>'admin'])
+```
+
+---
+
+## 🔄 Flusso completo di una ricarica (lato API)
+
+Sequenza tipica di chiamate per portare a termine una ricarica. Le frecce `→` sono
+HTTP, gli eventi WS sono indicati a parte.
+
+```
+1. POST /api/login                                       → { access_token }
+2. GET  /api/stations                                    → lista stazioni per la mappa
+3. GET  /api/station/{id}                                → dettaglio + punti della stazione scelta
+4. POST /api/{id_stazione}/verifica-codice  body {codice}→ 202 {status:"Attesa_Cavo", reservation_timeout:60}
+                                                          (rendez-vous in Redis, finestra 60s)
+   ─── nel frattempo l'utente ATTACCA IL CAVO ───
+       la colonnina pubblica su MQTT `stazione/{mac}/{id_punto}/eventi`:
+         {tipo: "cavo_collegato"}
+       mqtt-worker chiude il rendez-vous → CALL sp_avvio_sessione → crea sessione
+       → broadcast WS `SessioneAvviata` sul canale private-user.{id}
+5. GET  /api/me/sessione-attiva                          → { attiva:true, id_sessione, ... }
+   (oppure ascolto l'evento WS e salto il polling)
+6. — WS — `.ricarica.heartbeat` ogni ~5s con delta kWh   (canale private-user.{id})
+7. POST /api/session/{id}/stop                           → STOP via MQTT, sessione chiusa
+8. POST /api/logout                                      → revoca il token corrente
+```
+
+Tutti gli step da `2.` in poi richiedono `Authorization: Bearer <token>`.
+
+---
+
 ## 🎮 Controller — uno per uno
 
 ### Controller Web (rendono Blade views, rotte in [`web.php`](src/routes/web.php))
@@ -153,7 +315,7 @@ La collezione Postman pronta all'uso sta nella root: [`Green_School_Project.post
 | **`Api\AuthController`** | Login/logout via token. Stesse difese di `WebAuthController` (lockout, check `attivo`). Usato sia da React sia da client esterni (Postman, Python). | `{ access_token, token_type, user }` |
 | **`Api\RegisterController`** | Registrazione utente da React: crea record `utenti`, restituisce token Sanctum (auto-login). | `{ access_token, user }` |
 | **`Api\StationController`** | `all()`: stazioni `attiva` con `puntiRicarica` eager-loadato. `show($id)`: dettaglio singolo. | `{ status, data }` |
-| **`Api\SessionController`** | Cuore del flusso sessione: `AutenticazioneCodice()` verifica codice + memorizza rendez-vous Redis + pubblica MQTT `autenticazione_completata`. `SessioneAttivaUtente()`, `AttesaCavo()`, `show()`, `InterrompiSessione()`. | varia per metodo |
+| **`Api\SessionController`** | Cuore del flusso sessione: `AutenticazioneCodice(string $id_stazione, …)` riceve la stazione dal path, verifica il codice contro quella sola stazione, memorizza il rendez-vous Redis e pubblica MQTT `autenticazione_completata`. `SessioneAttivaUtente()`, `AttesaCavo()`, `show()`, `InterrompiSessione()`. | varia per metodo |
 | **`Api\IotController`** | `Registra()`: registrazione colonnina IoT con password globale + MAC. Crea record `stazioni` con stato `in_setup`. | `{ status, id_stazione }` |
 | **`Api\SchoolController`** | `profile()`: profilo scuola. `consumption()`: 12 mesi di consumi per anno selezionato (con anni disponibili per il selettore). | `{ status, data }` |
 | **`Api\GamificationController`** | `profile()`, `badges()`, `leaderboard()`, `sessioni()`, `sfide()`. Tutta la matematica XP/livello/CO₂. | varia |
@@ -195,7 +357,7 @@ sono iniettate via constructor injection nei controller / command.
 | Service | Cosa fa | Usato da |
 |---|---|---|
 | **`SessioneService`** | Apertura/chiusura sessione (chiama le stored procedure `sp_avvio_sessione` / `sp_termina_sessione`), gestione del rendez-vous codice→cavo su Redis (60s TTL), tracking kWh live su Redis, dispatch eventi WS. Esempio: `avvia()`, `termina()`, `memorizzaCodiceInAttesa()`, `kwhCorrenti()`, `secondiAttesaResidui()`. | `SessionController`, `MqttWorker`, `AdminController` (per kWh live in tabelle) |
-| **`CodiceMonousoService`** | Gestisce i codici 6 cifre delle stazioni: scrittura/lettura su Redis (chiave `codice:{idStazione}`, TTL 35s, sincronizzato con il refresh della colonnina). `verifica($codice)` itera sulle stazioni `attiva` e restituisce l'`id_stazione` che matcha. | `SessionController`, `MqttWorker` |
+| **`CodiceMonousoService`** | Gestisce i codici 6 cifre delle stazioni: scrittura/lettura su Redis (chiave `codice:{idStazione}`, **TTL 60s**, sincronizzato col refresh della colonnina). `verifica($idStazione, $codice)` confronta il codice digitato con quello in Redis per QUELLA stazione (no iterazione). | `SessionController`, `MqttWorker` |
 | **`GamificationService`** | Aggiornamento XP, livello, CO₂, streak quando una sessione finisce. Sblocco badge in base a regole (prima ricarica, streak, kWh accumulati…). | `SessioneService::termina()` |
 | **`SfideSettimanaliService`** | Definizioni statiche delle 3 sfide settimanali. Crea/aggiorna le righe in `gamification_sfide_settimanali` ricalcolando il progresso dalle sessioni reali ad ogni chiamata. | `GamificationController::sfide()` |
 | **`MqttService`** | Wrapper attorno al client MQTT (php-mqtt/laravel-client). Connect+publish lazy: ogni `publish()` apre una connessione, invia, chiude. Usato per mandare comandi alle colonnine (`START`, `STOP`, `autenticazione_completata`). | `SessioneService`, `SessionController`, `AdminController` |
@@ -282,7 +444,7 @@ Entrambi finiscono nella stessa closure di `channels.php`. La differenza è solo
   - Sessione cookie (Blade)
   - Sanctum token Bearer (React, API esterne)
   - Password globale `IOT_REGISTRATION_PASSWORD` (registrazione colonnina, una sola volta)
-- **Codice monouso**: 6 cifre per stazione, cambia ogni 30s, TTL Redis 35s. Sostituisce il vecchio QR che era statico e quindi insicuro.
+- **Codice monouso**: 6 cifre per stazione, generato dalla colonnina ogni 60s, TTL Redis 60s. È un numero pseudocasuale salvato in Redis come stringa: la verifica è un semplice confronto stringa, niente firma HMAC. Sostituisce il vecchio QR che era statico e quindi insicuro.
 - **Rendez-vous codice→cavo**: tra "ho verificato il codice" e "ho attaccato il cavo" passa un tempo. Il sistema dà **60 secondi**: in quella finestra il pending è in Redis (`codice_pending:{idStazione}`). Se scade, sessione non parte. Vedi `SessioneService::memorizzaCodiceInAttesa()`.
 - **Stored procedure transazionali**: `sp_avvio_sessione` e `sp_termina_sessione` fanno tutti i check e gli UPDATE in transazione atomica. Niente sessione "a metà".
 - **Redis**:

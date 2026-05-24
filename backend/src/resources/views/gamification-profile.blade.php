@@ -432,7 +432,7 @@ if (echo && ID_UTENTE) {
 const SK_ATTESA_START    = 'gs_attesa_start';
 const SK_ATTESA_PUNTO    = 'gs_attesa_punto';
 const SK_ATTESA_STAZIONE = 'gs_attesa_stazione';
-const TTL_QR = 60; // deve coincidere con SessioneService::TTL_CODICE_PENDING
+const TTL_CODICE = 60; // deve coincidere con SessioneService::TTL_CODICE_PENDING
 
 let countdownInterval = null;
 
@@ -443,7 +443,7 @@ if (banner.classList.contains('attesa')) {
     // tempo reale rimasto e, a scadenza avvenuta, il banner non viene proprio
     // renderizzato dal PHP (niente piu' restart a 60s).
     if (ATTESA_SECONDI && ATTESA_SECONDI > 0) {
-        const startReale = Date.now() - (TTL_QR - ATTESA_SECONDI) * 1000;
+        const startReale = Date.now() - (TTL_CODICE - ATTESA_SECONDI) * 1000;
         sessionStorage.setItem(SK_ATTESA_START, startReale.toString());
     } else if (!sessionStorage.getItem(SK_ATTESA_START)) {
         sessionStorage.setItem(SK_ATTESA_START, Date.now().toString());
@@ -494,7 +494,7 @@ function ricostruisciBannerAttesa(secondiRimanenti) {
         '  <span class="attesa-timer-label">secondi rimanenti</span>' +
         '</div>' +
         '<div class="attesa-progress"><div class="attesa-progress-bar" id="attesa-progress-bar" style="width:' +
-        Math.round((secondiRimanenti / TTL_QR) * 100) + '%"></div></div>';
+        Math.round((secondiRimanenti / TTL_CODICE) * 100) + '%"></div></div>';
     bannerCta.style.display = 'none';
 }
 
@@ -516,7 +516,7 @@ function calcolaSecondiRimanenti() {
     const start = parseInt(sessionStorage.getItem(SK_ATTESA_START) || '0', 10);
     if (!start) return 0;
     const trascorsi = Math.floor((Date.now() - start) / 1000);
-    return Math.max(0, TTL_QR - trascorsi);
+    return Math.max(0, TTL_CODICE - trascorsi);
 }
 
 function avviaCountdown(secondiIniziali) {
@@ -525,12 +525,12 @@ function avviaCountdown(secondiIniziali) {
     if (!valEl) return;
     let rimanenti = secondiIniziali;
     valEl.textContent = rimanenti;
-    if (barEl) barEl.style.width = Math.round((rimanenti / TTL_QR) * 100) + '%';
+    if (barEl) barEl.style.width = Math.round((rimanenti / TTL_CODICE) * 100) + '%';
 
     countdownInterval = setInterval(() => {
         rimanenti -= 1;
         valEl.textContent = Math.max(0, rimanenti);
-        if (barEl) barEl.style.width = Math.round(Math.max(0, rimanenti / TTL_QR) * 100) + '%';
+        if (barEl) barEl.style.width = Math.round(Math.max(0, rimanenti / TTL_CODICE) * 100) + '%';
         if (rimanenti <= 0) {
             clearInterval(countdownInterval);
             countdownInterval = null;

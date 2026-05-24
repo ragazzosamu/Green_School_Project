@@ -619,7 +619,7 @@ arriva, e in quel momento la sessione viene davvero creata su DB.
 
 ```
    [user]                  [Redis pending]              [colonnina]
-     │  POST /verifica-codice                              │
+     │  POST /{id_stazione}/verifica-codice                │
      │ ──────────►  SETNX codice_pending:{mac} = user      │
      │                       │                             │
      │  202 Attesa_Cavo      │ (TTL 60s)                   │
@@ -637,10 +637,14 @@ arriva, e in quel momento la sessione viene davvero creata su DB.
 
 ### Step 1 — verifica codice
 
-`POST /api/verifica-codice` ([`SessionController::AutenticazioneCodice`](backend/src/app/Http/Controllers/Api/SessionController.php))
+`POST /api/{id_stazione}/verifica-codice` ([`SessionController::AutenticazioneCodice`](backend/src/app/Http/Controllers/Api/SessionController.php))
+
+L'`id_stazione` (il MAC) viaggia nel path: il client lo conosce già perché ha
+aperto il dettaglio della stazione (`/station/{id}`).
 
 1. Valida codice (6 cifre).
-2. `CodiceMonousoService::verifica($codice)` ritorna l'`id_stazione` o null.
+2. `CodiceMonousoService::verifica($idStazione, $codice)` confronta il codice
+   digitato con quello salvato in Redis per QUELLA stazione. Ritorna `true`/`false`.
 3. `Cache::add("codice_pending:{mac}", ['id_utente' => $userId], 60)` — **SETNX**.
    - Se false → 409 (un altro utente è già in attesa).
 4. Publish MQTT su `stazione/{mac}/comandi` con `autenticazione_completata` (informativo,
@@ -807,7 +811,7 @@ Definite in [`routes/api.php`](backend/src/routes/api.php).
 | GET  | `/api/gamification/badges` | `GamificationController::badges` |
 | GET  | `/api/gamification/leaderboard` | `GamificationController::leaderboard` |
 | GET  | `/api/gamification/sessioni` | `GamificationController::sessioni` |
-| POST | `/api/verifica-codice` | `SessionController::AutenticazioneCodice` |
+| POST | `/api/{id_stazione}/verifica-codice` | `SessionController::AutenticazioneCodice` |
 | GET  | `/api/me/sessione-attiva` | `SessionController::SessioneAttivaUtente` |
 | GET  | `/api/session/{id}` | `SessionController::show` |
 | POST | `/api/session/{id}/stop` | `SessionController::InterrompiSessione` |

@@ -61,7 +61,7 @@ export default function StationDetailPage() {
     setSending(true);
     setCodeErr('');
     try {
-      const res = await apiClient.post('/verifica-codice', { codice: c });
+      const res = await apiClient.post(`/${encodeURIComponent(id)}/verifica-codice`, { codice: c });
       // L'API risponde 202 con id_stazione (codice valido, in attesa cavo)
       if (res.status === 202) {
         const idStazione = res.data?.id_stazione ?? stazione?.id_stazione ?? id;
@@ -164,19 +164,19 @@ export default function StationDetailPage() {
         )}
 
         {showCode && (
-          <div className="qr-overlay" onClick={(e) => { if (e.target === e.currentTarget) setShowCode(false); }}>
-            <div className="qr-card">
-              <div className="qr-header">
-                <div className="qr-icon-box">#</div>
+          <div className="codice-overlay" onClick={(e) => { if (e.target === e.currentTarget) setShowCode(false); }}>
+            <div className="codice-card">
+              <div className="codice-header">
+                <div className="codice-icon-box">#</div>
                 <div>
-                  <p className="qr-title">Inserisci codice monouso</p>
-                  <p className="qr-subtitle">6 cifre mostrate sul display della colonnina (un codice per stazione, valido per 60s)</p>
+                  <p className="codice-title">Inserisci codice monouso</p>
+                  <p className="codice-subtitle">6 cifre mostrate sul display della colonnina (un codice per stazione, valido per 60s)</p>
                 </div>
               </div>
 
-              <div className="qr-input-wrap">
+              <div className="codice-input-wrap">
                 <input
-                  className="qr-input"
+                  className="codice-input"
                   maxLength={6}
                   inputMode="numeric"
                   autoComplete="one-time-code"
@@ -187,12 +187,12 @@ export default function StationDetailPage() {
                 />
               </div>
 
-              {codeErr && <p className="qr-error">{codeErr}</p>}
+              {codeErr && <p className="codice-error">{codeErr}</p>}
 
-              <button className="scegli-btn qr-confirm" onClick={inviaCodice} disabled={sending}>
+              <button className="scegli-btn codice-confirm" onClick={inviaCodice} disabled={sending}>
                 {sending ? 'Verifica…' : 'Conferma'}
               </button>
-              <button className="qr-cancel-btn" onClick={() => setShowCode(false)}>Annulla</button>
+              <button className="codice-cancel-btn" onClick={() => setShowCode(false)}>Annulla</button>
             </div>
           </div>
         )}

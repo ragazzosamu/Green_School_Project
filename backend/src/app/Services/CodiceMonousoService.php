@@ -17,9 +17,10 @@ use Illuminate\Support\Facades\DB;
  * codice dal display e digitarlo nell'app anche se la generazione successiva
  * arriva nel mezzo.
  *
- * Verifica: l'utente digita il codice nell'app, il backend itera le
- * stazioni 'attiva' e cerca quale ha quel codice. Restituisce solo l'id
- * della stazione; il punto specifico viene scelto al cavo_collegato.
+ * Verifica: l'id_stazione arriva dalla URL (POST /api/{id_stazione}/verifica-codice),
+ * quindi il backend confronta direttamente il codice digitato con quello
+ * salvato in Redis per QUELLA stazione. Niente iterazione su tutte le
+ * stazioni attive. Il punto specifico verra' scelto al cavo_collegato.
  * Il codice resta in Redis fino alla scadenza naturale (non si fa forget):
  * l'unicita' del rendez-vous e' garantita a valle dal SETNX su
  * codice_pending:{id_stazione} (SessioneService::memorizzaCodiceInAttesa).
@@ -37,24 +38,22 @@ class CodiceMonousoService
     }
 
     /**
-     * Verifica un codice: ritorna id_stazione o null se invalido/scaduto.
+     * Verifica un codice contro UNA specifica stazione.
+     * Ritorna true se il codice digitato coincide con quello in Redis
+     * per quella stazione (e la stazione e' attiva), false altrimenti.
      */
-    public function verifica(string $codice): ?string
+    public function verifica(string $idStazione, string $codice): bool
     {
         $codice = $this->normalizza($codice);
-        if ($codice === null) return null;
+        if ($codice === null) return false;
 
-        $stazioni = DB::table('stazioni')
+        $esiste = DB::table('stazioni')
+            ->where('id_stazione', $idStazione)
             ->where('stato_setup', 'attiva')
-            ->pluck('id_stazione');
+            ->exists();
+        if (! $esiste) return false;
 
-        foreach ($stazioni as $idStazione) {
-            if (Cache::get($this->key($idStazione)) === $codice) {
-                return $idStazione;
-            }
-        }
-
-        return null;
+        return Cache::get($this->key($idStazione)) === $codice;
     }
 
     private function normalizza(string $codice): ?string

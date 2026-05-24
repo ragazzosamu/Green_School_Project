@@ -53,8 +53,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/gamification/sfide',       [GamificationController::class, 'sfide']);
 
     // Avvio sessione tramite codice monouso a 6 cifre generato dalla colonnina
-    // (rendez-vous codice -> cavo, finestra 60s)
-    Route::post('/verifica-codice', [SessionController::class, 'AutenticazioneCodice']);
+    // (rendez-vous codice -> cavo, finestra 60s).
+    // L'id_stazione e' un MAC address (AA:BB:CC:DD:EE:FF): il vincolo regex
+    // accetta solo hex e separatori, cosi' la rotta non collide con altre.
+    Route::post('/{id_stazione}/verifica-codice', [SessionController::class, 'AutenticazioneCodice'])
+        ->where('id_stazione', '[0-9A-Fa-f:.\-]+');
 
     // Polling: ha l'utente loggato una sessione attiva in questo momento?
     Route::get('/me/sessione-attiva', [SessionController::class, 'SessioneAttivaUtente']);

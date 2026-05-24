@@ -24,6 +24,12 @@
                   "    console.log(\"Token salvato.\");",
                   "} else {",
                   "    console.warn(\"Token non trovato.\");",
+                  "}",
+                  "const idUtente = jsonData.user && jsonData.user.id_utente;",
+                  "if (idUtente) {",
+                  "    pm.environment.set(\"id_utente\", idUtente);",
+                  "    pm.collectionVariables.set(\"id_utente\", idUtente);",
+                  "    console.log(\"id_utente salvato.\");",
                   "}"
                 ],
                 "type": "text/javascript"
@@ -99,7 +105,7 @@
       "name": "Session",
       "item": [
         {
-          "name": "POST /verifica-codice",
+          "name": "POST /{id_stazione}/verifica-codice",
           "request": {
             "method": "POST",
             "header": [
@@ -107,7 +113,11 @@
               { "key": "Accept", "value": "application/json" }
             ],
             "body": { "mode": "raw", "raw": "{\n  \"codice\": \"123456\"\n}" },
-            "url": { "raw": "{{api}}/verifica-codice", "host": ["{{api}}"], "path": ["verifica-codice"] }
+            "url": {
+              "raw": "{{api}}/{{id_stazione}}/verifica-codice",
+              "host": ["{{api}}"],
+              "path": ["{{id_stazione}}", "verifica-codice"]
+            }
           }
         },
         {

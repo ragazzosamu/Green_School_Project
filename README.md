@@ -23,6 +23,7 @@ Il progetto gira interamente in **Docker**. I servizi che compongono lo stack:
 | `mqtt-worker`        | `green_mqtt_worker`          | Worker che consuma i messaggi MQTT (codice, telemetria, heartbeat, eventi) e dispatcha eventi Laravel |
 | `heartbeat_checker`  | `green_heartbeat_checker`    | Watchdog: marca offline i punti che non mandano heartbeat da oltre 3 minuti |
 | `reverb`             | `green_reverb`               | Server **WebSocket** verso il browser (broadcast eventi real-time). Porta `8080`, complementare a MQTT |
+| `react`              | `green_react`                | Dev server **Vite** della SPA React (`frontend/`). Porta `5173`        |
 | `worker-1` … `worker-7` | `gs-worker-1-1` … `gs-worker-7-1` | **Simulatori** delle colonnine di ricarica: 7 worker, uno per stazione (vedi `simulatore/`) |
 
 ```
@@ -37,6 +38,7 @@ Il progetto gira interamente in **Docker**. I servizi che compongono lo stack:
 📂 **Documentazione per componente**
 - Architettura dell'app (API, MQTT, WS, DB) → [`ARCHITECTURE.md`](ARCHITECTURE.md)
 - Backend Laravel → [`backend/README.md`](backend/README.md)
+- Frontend React (SPA) → [`frontend/README.md`](frontend/README.md)
 - Simulatore colonnine → [`simulatore/README.md`](simulatore/README.md)
 
 ---
@@ -72,7 +74,7 @@ cd backend/src
 cp .env.example .env
 ```
 
-Le voci essenziali per la migrazione codice monouso (presenti già nell'`.env.example`):
+Le voci essenziali (già presenti nel `.env.example`):
 
 ```env
 IOT_REGISTRATION_PASSWORD=greenschool-iot-2025   # password globale per /api/iot/registra
@@ -103,13 +105,16 @@ VITE_REVERB_SCHEME=http
 > al valore iniziale (sintomo tipico: "Energia erogata" non sale mai).
 > Se vedi `[Echo] VITE_REVERB_APP_KEY mancante` nella Console DevTools, hai saltato questo step.
 
-### 4. Installa e compila gli asset frontend
+### 4. Compila gli asset Blade (Vite)
+Servono al sito **Blade** (mappa, profilo, classifica…) per i CSS/JS compilati,
+incluso il client Echo che gestisce gli aggiornamenti in tempo reale. La SPA React
+ha una build separata gestita dal container `green_react`, qui non serve.
+
 > ⚠️ Questi comandi vanno lanciati **sul tuo PC**, NON dentro Docker.
 ```bash
 cd backend/src
-npm install
-npm install --save-dev laravel-echo pusher-js
-npm run build
+npm install            # installa le dipendenze elencate in package.json
+npm run build          # genera public/build/* (asset minificati)
 ```
 
 ### 5. Avvia i container
@@ -357,7 +362,7 @@ docker exec -it green_redis redis-cli
 Chiavi utili:
 ```
 KEYS codice:*                 # codici monouso attivi (chiave: codice:{mac})
-KEYS codice_pending:*         # prenotazioni dopo /api/verifica-codice
+KEYS codice_pending:*         # prenotazioni dopo /api/{id_stazione}/verifica-codice
 KEYS sessione_kwh:*           # kWh accumulati delle sessioni in corso
 GET  codice:AA:BB:CC:DD:EE:FF
 TTL  codice:AA:BB:CC:DD:EE:FF
@@ -415,8 +420,6 @@ docker-compose up -d --build
 docker exec -it green_app php artisan migrate:fresh --seed
 ```
 
----
-
 ### Ispezionare MQTT
 ```bash
 # Vede tutti i messaggi che passano sul broker
@@ -447,15 +450,56 @@ broadcasting, health) divise in **cartelle per area**, con variabili `{{api}}` /
 2. Se la avevi già, scegli **Replace**.
 3. Gli URL sono scritti come `{{api}}/NOME_ROTTA`: Postman sostituisce `{{api}}` da solo.
 
-### 3. Autenticazione automatica (Login & Token)
-Il progetto usa **Laravel Sanctum** con token Bearer:
-1. Apri **Auth → Login** (cambia email/password se servono altre credenziali) e clicca **Send**.
-2. Uno script di test salva automaticamente `access_token` nelle variabili di
-   ambiente e di collezione come `{{token}}`.
-3. Tutte le rotte protette (stations, session, school, gamification, admin) sono
-   configurate con auth Bearer di default a livello collezione: prendono `{{token}}`
-   in autonomia. Per le rotte pubbliche (login, register, iot/registra, health) c'e'
-   `"auth": { "type": "noauth" }` esplicito.
+### 3. Autenticazione — come funziona
+
+Il backend ha **3 contesti di autenticazione** (riassunto; dettaglio nel
+[backend README → Autenticazione](backend/README.md#-autenticazione)):
+
+| Chi          | Come si autentica                          | Header / cookie                    |
+|--------------|--------------------------------------------|------------------------------------|
+| Browser Blade | Form `/login` → cookie di sessione         | `Cookie: green_school_session=…`   |
+| React / Postman / Python | `POST /api/login` → token Sanctum | `Authorization: Bearer <token>`    |
+| Colonnina IoT | Password globale + MAC, una sola volta     | body `password_registrazione=…`    |
+
+Per Postman ti serve solo il **Bearer token Sanctum**:
+
+1. Apri **Auth → Login**. Se servono altre credenziali, modifica il body:
+   ```json
+   { "email": "test.test@email.it", "password": "password123" }
+   ```
+2. **Send**. La risposta è del tipo:
+   ```json
+   { "access_token": "7|AbCd…XyZ", "token_type": "Bearer",
+     "user": { "id_utente": "…", "email": "…", "ruolo": "utente", … } }
+   ```
+3. Uno **script di test** sul tab "Tests" della richiesta Login estrae
+   `access_token` e `user.id_utente` e li salva come variabili `{{token}}` e
+   `{{id_utente}}` (ambiente + collezione). Tutte le request successive le riusano
+   in automatico.
+4. Le **rotte protette** (stations, session, school, gamification, admin) hanno
+   l'auth a livello di collezione: prendono `{{token}}` da sole. Le **rotte pubbliche**
+   (`login`, `register`, `iot/registra`, `health`) hanno `"auth": { "type": "noauth" }`
+   esplicito così non rischi di mandarci dentro un token sbagliato.
+5. Per **disautenticarti**: **Auth → Logout** (`POST /api/logout`). Revoca **solo**
+   il token corrente; eventuali altri token dello stesso utente restano validi.
+
+> ⚠️ **Token persistente.** Sanctum non scade automaticamente: una volta ottenuto,
+> il token vale finché non chiami `/logout` o non lo cancelli dalla tabella
+> `personal_access_tokens`. Se rifai login senza logout, ottieni un secondo token e
+> il primo resta attivo.
+
+**Lockout brute force**: dopo 5 login falliti dello stesso utente, il backend risponde
+**HTTP 429** con `Retry-After: <secondi>` per 15 minuti. Se sei rimasto bloccato in
+test, sbloccati via Tinker:
+```bash
+docker exec -it green_app php artisan tinker
+> App\Models\Utenti::where('email','test.test@email.it')
+    ->update(['login_tentativi'=>0,'login_bloccato_fino'=>null])
+```
+
+**Admin in Postman**: serve un utente con `ruolo='admin'`. Le credenziali di default
+sono `admin@greenschool.it` / `password123` (seed). Dopo login con quell'utente,
+`{{token}}` apre anche le rotte sotto `/api/admin/*`.
 
 ### 4. Struttura cartelle
 
@@ -463,7 +507,7 @@ Il progetto usa **Laravel Sanctum** con token Bearer:
 |---|---|
 | **Auth** | `POST /login`, `POST /register`, `POST /logout` |
 | **Stations** | `GET /stations`, `GET /station/{id}` |
-| **Session** | flusso ricarica: `POST /verifica-codice`, `GET /me/sessione-attiva`, `GET /me/attesa-cavo`, `GET /session/{id}`, `POST /session/{id}/stop` |
+| **Session** | flusso ricarica: `POST /{id_stazione}/verifica-codice`, `GET /me/sessione-attiva`, `GET /me/attesa-cavo`, `GET /session/{id}`, `POST /session/{id}/stop` |
 | **School** | `GET /school/profile`, `GET /school/consumption?anno=YYYY` |
 | **Gamification** | `profile`, `badges`, `leaderboard`, `sessioni`, `sfide` |
 | **Admin** | dashboard, utenti (CRUD + toggle/reset), sessioni, stazioni (toggle/setup), report CSV — protette da `auth:sanctum + admin.api` |
@@ -486,12 +530,12 @@ di autorizzazione `POST /api/broadcasting/auth` (vedi [ARCHITECTURE.md sezione C
 Per simulare l'handshake da Postman:
 1. Esegui **Auth → Login** per ottenere il token.
 2. Apri **Realtime → POST /broadcasting/auth**.
-3. Il body urlencoded contiene `socket_id` (valore di esempio, in realta' lo genera
+3. Il body urlencoded contiene `socket_id` (valore di esempio, in realtà lo genera
    Reverb) e `channel_name=private-user.{{id_utente}}`. Setta `{{id_utente}}`.
 4. Clicca **Send**. Risposta attesa: `{"auth": "<chiave>:<hmac>"}` (200).
 5. Se ricevi 403, la closure in [`channels.php`](backend/src/routes/channels.php) ha
-   negato l'autorizzazione perche' stai chiedendo il canale di un altro utente.
-6. Se ricevi 404, il route non e' caricato: `docker compose exec app php artisan route:list --path=broadcasting` per controllare.
+   negato l'autorizzazione perché stai chiedendo il canale di un altro utente.
+6. Se ricevi 404, il route non è caricato: `docker compose exec app php artisan route:list --path=broadcasting` per controllare.
 
 Nota: in produzione l'endpoint non si chiama mai a mano, lo invoca Echo dal browser.
 Questa request serve solo per debugging del flusso di auth.

@@ -102,7 +102,7 @@ Route::get('/profilo', function (Request $request) {
         : 0.0;
 
     // ?attesa_stazione=<mac>&attesa=<id_punto> arrivano da /stazione/{id}
-    // dopo /api/verifica-codice riuscito. id_punto e' locale alla stazione,
+    // dopo /api/{id_stazione}/verifica-codice riuscito. id_punto e' locale alla stazione,
     // serve anche la stazione per ricostruire il canale WebSocket.
     //
     // Il banner "in attesa del cavo" viene mostrato SOLO se il rendez-vous in

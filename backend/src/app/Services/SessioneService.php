@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\Log;
 
 /**
  * Logica di apertura/chiusura sessione di ricarica condivisa fra:
- *  - SessionController (chiamata da QR scan)
+ *  - SessionController (chiamata dopo POST /api/{id_stazione}/verifica-codice)
  *  - MqttWorker       (chiamata da evento "cavo_collegato")
  *
  * Tutta la persistenza passa dalle stored procedure sp_avvio_sessione /

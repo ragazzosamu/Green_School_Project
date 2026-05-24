@@ -274,7 +274,7 @@
 .state-sub { font-size: 0.8rem; color: #A8A69E; line-height: 1.55; }
 
 /* ── Overlay codice monouso ── */
-.qr-overlay {
+.codice-overlay {
   position: fixed;
   inset: 0;
   background: rgba(26,25,22,0.6);
@@ -287,7 +287,7 @@
   padding: 1.25rem;
 }
 
-.qr-card {
+.codice-card {
   background: #FFFFFF;
   border: 1px solid #E4E2DA;
   border-radius: 20px;
@@ -297,7 +297,7 @@
   box-shadow: 0 24px 64px rgba(0,0,0,0.22), 0 4px 16px rgba(0,0,0,0.1);
 }
 
-.qr-header {
+.codice-header {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -306,7 +306,7 @@
   border-bottom: 1px solid #E4E2DA;
 }
 
-.qr-icon-box {
+.codice-icon-box {
   width: 40px; height: 40px;
   background: #EBF5EF;
   border-radius: 10px;
@@ -317,20 +317,20 @@
   flex-shrink: 0;
 }
 
-.qr-title {
+.codice-title {
   font-weight: 600;
   font-size: 0.92rem;
   color: #1A1916;
   line-height: 1.2;
 }
 
-.qr-subtitle {
+.codice-subtitle {
   font-size: 0.76rem;
   color: #A8A69E;
   margin-top: 2px;
 }
 
-.qr-input-wrap {
+.codice-input-wrap {
   border-radius: 12px;
   background: #F2F1ED;
   border: 1px solid #E4E2DA;
@@ -338,7 +338,7 @@
   margin-bottom: 1rem;
 }
 
-.qr-input {
+.codice-input {
   font-family: monospace;
   font-size: 2rem;
   letter-spacing: 0.6rem;
@@ -351,16 +351,16 @@
   color: #1A1916;
 }
 
-.qr-error {
+.codice-error {
   color: #C0392B;
   font-size: 0.76rem;
   margin: -0.4rem 0 0.8rem;
   text-align: center;
 }
 
-.qr-confirm { width: 100%; padding: 12px; margin-bottom: 0.4rem; }
+.codice-confirm { width: 100%; padding: 12px; margin-bottom: 0.4rem; }
 
-.qr-cancel-btn {
+.codice-cancel-btn {
   width: 100%;
   padding: 12px;
   background: #F2F1ED;
@@ -371,4 +371,4 @@
   color: #6B6860;
   cursor: pointer;
 }
-.qr-cancel-btn:hover { background: #E8E6E0; color: #1A1916; }
+.codice-cancel-btn:hover { background: #E8E6E0; color: #1A1916; }

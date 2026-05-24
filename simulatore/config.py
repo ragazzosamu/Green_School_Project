@@ -36,6 +36,6 @@ MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
 METER_INTERVAL     = int(os.getenv("METER_INTERVAL",     "5"))
 HEARTBEAT_INTERVAL = int(os.getenv("HEARTBEAT_INTERVAL", "60"))
 # La stazione genera un codice monouso a 6 cifre ogni CODICE_INTERVAL secondi
-# e lo pubblica via MQTT. L'utente lo digita nell'app al posto del vecchio QR.
+# e lo pubblica via MQTT. L'utente lo digita nell'app per autorizzare la ricarica.
 # Backend: TTL Redis 35s (5s di overlap col prossimo codice per coprire eventuali ritardi rete).
 CODICE_INTERVAL    = int(os.getenv("CODICE_INTERVAL",    "30"))

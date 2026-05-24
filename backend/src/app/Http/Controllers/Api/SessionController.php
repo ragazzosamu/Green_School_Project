@@ -16,12 +16,14 @@ use Illuminate\Support\Facades\Log;
  *  1. La colonnina genera ogni 30s UN codice a 6 cifre per tutta la stazione
  *     e lo pubblica su stazione/{id_stazione}/codice. MqttWorker lo salva in
  *     Redis (chiave codice:{id_stazione}, TTL 35s).
- *  2. L'utente digita il codice nell'app -> POST /api/verifica-codice.
- *  3. Validiamo con CodiceMonousoService::verifica iterando sulle stazioni
- *     'attiva': il match ritorna SOLO id_stazione (il punto specifico verra'
- *     scelto in base a dove l'utente attacca il cavo). Il codice resta in
- *     Redis per i 35s di TTL anche dopo il match; l'unicita' della
- *     prenotazione e' garantita dal SETNX su codice_pending:{id_stazione}.
+ *  2. L'utente digita il codice nell'app -> POST /api/{id_stazione}/verifica-codice.
+ *     L'id_stazione e' gia' noto al frontend perche' l'utente ha appena
+ *     aperto la pagina di dettaglio di quella stazione dalla mappa.
+ *  3. Validiamo con CodiceMonousoService::verifica($idStazione, $codice):
+ *     confronto diretto col valore in Redis per quella stazione. Il punto
+ *     specifico verra' scelto in base a dove l'utente attacca il cavo.
+ *     Il codice resta in Redis per il TTL anche dopo il match; l'unicita'
+ *     della prenotazione e' garantita dal SETNX su codice_pending:{id_stazione}.
  *  4. Notifichiamo la stazione via MQTT (stazione/{mac}/comandi) che un
  *     utente e' stato autorizzato.
  *  5. Risposta 202: il frontend va in /profilo e fa polling sulla sessione
@@ -38,20 +40,21 @@ class SessionController extends Controller
     ) {
     }
 
-    public function AutenticazioneCodice(Request $request): JsonResponse
+    public function AutenticazioneCodice(string $id_stazione, Request $request): JsonResponse
     {
         $data = $request->validate([
             'codice' => ['required', 'string', 'size:6', 'regex:/^\d{6}$/'],
         ]);
 
-        $userId = $request->user()->id_utente;
+        $userId     = $request->user()->id_utente;
+        $idStazione = $id_stazione;
 
-        // Il codice e' unico per stazione: la verifica ritorna solo
-        // l'id_stazione. L'utente collega il cavo a uno qualsiasi dei punti
-        // della stazione e il worker MQTT, al cavo_collegato, sceglie quel
+        // Il codice e' unico per stazione: confrontiamo direttamente il
+        // codice digitato con quello salvato in Redis per QUESTA stazione.
+        // L'utente collega poi il cavo a uno qualsiasi dei punti della
+        // stazione e il worker MQTT, al cavo_collegato, sceglie quel
         // punto specifico per la sessione.
-        $idStazione = $this->codici->verifica($data['codice']);
-        if ($idStazione === null) {
+        if (! $this->codici->verifica($idStazione, $data['codice'])) {
             return response()->json(['error' => 'Codice non valido o scaduto'], 422);
         }
 
