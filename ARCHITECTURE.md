@@ -127,11 +127,29 @@ Tre livelli:
 
 ### Perché funziona bene per noi
 
-- Le colonnine non hanno un IP pubblico raggiungibile: si **connettono al broker** in uscita.
-- Il backend può **mandare comandi** alle colonnine via lo stesso canale, senza dover
-  aprire connessioni inbound verso ogni dispositivo.
-- Il broker fa **fan-out**: se 100 utenti aprono la mappa, il broker non gli manda 100 copie
-  — è Laravel che inoltra agli interessati via WebSocket.
+- **Le colonnine non sono raggiungibili dall'esterno.** Una colonnina installata in
+  una scuola sta dietro il router della scuola (NAT) e ha un IP locale tipo
+  `192.168.x.y`, invisibile da internet. Il backend Laravel su cloud **non può
+  aprire una connessione TCP verso di lei**: dovrebbe convincere l'IT della scuola
+  ad aprire porte sul firewall, configurare port forwarding, ottenere un IP pubblico
+  statico — improponibile su decine di scuole diverse. Il pattern MQTT inverte la
+  direzione: è la **colonnina a connettersi al broker** all'avvio (traffico in uscita,
+  che il NAT lascia sempre passare senza configurazioni). Da quel momento la
+  connessione TCP resta aperta e ci può viaggiare traffico in entrambe le direzioni
+  sulla stessa "linea" — stesso pattern usato da Telegram, WhatsApp, push notifications
+  mobile.
+- **Il backend può mandare comandi alle colonnine sullo stesso canale.** Una volta
+  che la colonnina è connessa al broker e sottoscritta ai suoi topic comandi
+  (`stazione/{mac}/...`), il backend pubblica un messaggio sul broker e questo lo
+  inoltra alla colonnina attraverso la connessione già aperta. Niente connessioni
+  inbound da gestire per ogni dispositivo.
+- **Separazione dei bus.** I browser **non sono client MQTT**: l'unico subscriber
+  MQTT è il worker `mqtt:leggi`, che riceve una sola copia per ogni messaggio
+  dalla colonnina e decide cosa propagare al frontend via WebSocket (Reverb).
+  Risultato: il broker MQTT resta interno alla rete Docker, non deve gestire
+  migliaia di connessioni browser, e l'autorizzazione "chi vede cosa" si fa lato
+  Laravel (canali privati per utente, pubblici per la mappa) invece di dipendere
+  dalle ACL del broker.
 
 ### Nel nostro progetto
 
@@ -212,11 +230,25 @@ Qui sta il dettaglio cruciale del prossimo paragrafo.
 
 ### Il problema: Blade ha la sessione, React ha solo un token
 
-Il route `/broadcasting/auth` viene registrato automaticamente da
-[`bootstrap/app.php`](backend/src/bootstrap/app.php) tramite `withBroadcasting()`, e di
-default usa il middleware **`web`** (sessione cookie + CSRF). Questo va benissimo per
-Blade, che ha la sessione e manda l'`X-CSRF-TOKEN` con il `<meta>`:
+Per autorizzare un canale privato Laravel ha bisogno di sapere *chi sei*. I due
+frontend gli rispondono in due lingue diverse, e questo costringe a registrare
+**due endpoint di auth distinti** che convivono.
 
+#### Perché Blade può usare i cookie
+
+Quando il browser apre `/login`, è Laravel stesso a generare la pagina HTML. In
+quel momento Laravel può:
+- creare una **sessione lato server** (riga in Redis con TTL 120 min, vedi
+  [`config/session.php`](backend/src/config/session.php))
+- spedire al browser un cookie httpOnly `green_school_session=<id>` con dentro
+  l'ID della sessione
+- inserire nella pagina un **token CSRF** in `<meta name="csrf-token">`
+
+Da quel momento ogni richiesta del browser verso lo stesso dominio porta il cookie
+automaticamente, e il JS della pagina può leggere il token CSRF dal meta e
+metterlo nell'header `X-CSRF-TOKEN`. Laravel verifica entrambi e sa che sei tu.
+
+Per Echo lato Blade questo significa:
 ```js
 // session-active.blade.php
 authEndpoint: '/broadcasting/auth',
@@ -225,41 +257,109 @@ auth: {
         'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
     },
 },
+// niente Authorization: il browser allega il cookie da solo
 ```
 
-React invece autentica via Sanctum **Bearer token**, non ha sessione cookie e non ha
-CSRF. Se React usasse lo stesso `/broadcasting/auth` riceverebbe 401 o redirect al
-login, Echo non si sottoscriverebbe, e gli eventi privati non arriverebbero mai
-(sintomo classico: i kWh sembrano "congelati" durante la ricarica).
+#### Perché React NON può usare i cookie (e quindi serve il token)
 
-**Soluzione**: c'è un secondo endpoint registrato esplicitamente in
-[`routes/api.php`](backend/src/routes/api.php), protetto via Sanctum:
+Il frontend React è un'app statica servita da **Vite su un container separato**
+(porta 5173, vedi `docker-compose.yaml`). Apri la SPA → il browser scarica file
+JavaScript da Vite, **non chiama mai Laravel per "renderizzare la pagina"**.
+Conseguenza diretta: Laravel non ha mai l'occasione di settare un cookie di
+sessione né di iniettare un meta CSRF nell'HTML, perché l'HTML non lo ha generato
+lui.
 
-```php
-// Stesso channels.php, ma con middleware diverso e prefisso /api
-Broadcast::routes(['middleware' => ['auth:sanctum'], 'prefix' => 'api']);
-```
+Quando la SPA vuole parlare con l'API, deve identificarsi in un altro modo. La
+scelta è il **token Bearer Sanctum**:
+1. La SPA chiama `POST /api/login` con email/password.
+2. Laravel risponde con un token (`access_token: "7|AbCd…XyZ"`).
+3. La SPA lo salva in `localStorage`.
+4. Da quel momento aggiunge `Authorization: Bearer 7|AbCd…XyZ` a ogni richiesta API.
 
-Effetto: oltre a `POST /broadcasting/auth` (per Blade) esiste anche
-`POST /api/broadcasting/auth` (per React). Echo lato React lo configura così
-([`useSessionChannel.js`](frontend/src/hooks/useSessionChannel.js)):
+Tre vantaggi che il cookie non avrebbe:
 
+- **Funziona anche se backend e frontend stanno su domini diversi** (oggi
+  `localhost:80` vs `localhost:5173`, domani magari `api.greenschool.it` vs
+  `app.greenschool.it`). I cookie cross-domain richiedono `SameSite=None`,
+  `Secure`, CORS con `credentials: true`, e configurazioni fragili. I Bearer
+  token in header passano sempre.
+- **Niente CSRF possibile per costruzione.** Il browser allega cookie
+  automaticamente a ogni richiesta verso il loro dominio, ed è proprio questo che
+  abilita gli attacchi CSRF (sito malevolo che fa partire una POST verso la tua
+  banca con il cookie della vittima allegato automaticamente). Gli header
+  custom come `Authorization` **non** vengono allegati automaticamente: l'unico
+  modo per metterli è leggere il token dal `localStorage`, cosa che la
+  Same-Origin Policy del browser impedisce a un sito malevolo. Quindi senza
+  cookie → niente CSRF → niente token CSRF da gestire.
+- **Stesso meccanismo riusabile per client non-browser**: Postman, app mobile,
+  script Python. Tutti possono mandare `Authorization: Bearer`, nessuno gestisce
+  cookie.
+
+Per Echo lato React questo significa:
 ```js
 new Echo({
   broadcaster: 'reverb',
   // ...
-  authEndpoint: '/api/broadcasting/auth',   // <-- override del default
+  authEndpoint: '/api/broadcasting/auth',   // ← endpoint diverso, vedi sotto
   auth: {
     headers: {
-      Authorization: `Bearer ${token}`,    // Sanctum token, NO CSRF
+      Authorization: `Bearer ${token}`,     // letto da localStorage
       Accept: 'application/json',
     },
   },
 });
 ```
 
-Entrambi gli endpoint chiamano alla fine la **stessa** closure di `channels.php`. Cambia
-solo COME è stato autenticato l'utente prima.
+#### Conseguenza: due endpoint, una sola closure
+
+L'endpoint di default `/broadcasting/auth` viene creato da `withBroadcasting()`
+in [`bootstrap/app.php`](backend/src/bootstrap/app.php) col middleware **`web`**
+(cookie + CSRF). Perfetto per Blade, ma se React lo chiamasse riceverebbe **401
+o redirect al login** perché manca il cookie. Sintomo classico: i kWh sembrano
+"congelati" durante la ricarica.
+
+Soluzione: in [`routes/api.php`](backend/src/routes/api.php) si registra un
+secondo endpoint con un middleware diverso:
+
+```php
+// crea POST /api/broadcasting/auth con middleware Sanctum
+Broadcast::routes(['middleware' => ['auth:sanctum']]);
+```
+
+(Il prefisso `/api` arriva automaticamente perché il file è `api.php`.)
+
+Risultato: due URL distinti, **un solo file di regole `channels.php`** che li
+serve entrambi.
+
+| Endpoint | Registrato in | Middleware | Come ti identifichi | Usato da |
+|---|---|---|---|---|
+| `POST /broadcasting/auth` | `bootstrap/app.php` (`withBroadcasting`) | `web` | Cookie `green_school_session` + header `X-CSRF-TOKEN` | Blade |
+| `POST /api/broadcasting/auth` | `routes/api.php` (`Broadcast::routes`) | `auth:sanctum` | Header `Authorization: Bearer <token>` | React |
+
+Quando una richiesta arriva su uno dei due endpoint, Laravel:
+1. esegue il middleware (cookie+CSRF per Blade, Sanctum per React) → risolve `$user`
+2. legge `channel_name` dal body, cerca in `channels.php` il pattern che matcha
+3. esegue la closure passando `$user` e i parametri estratti dal pattern
+4. se la closure ritorna `true` → firma HMAC con `APP_KEY` e la restituisce
+5. se ritorna `false` → 403
+
+Cambia solo **come l'utente è stato riconosciuto al punto 1**. Il resto è
+identico: stessa logica, stessa firma, stesso `channels.php`.
+
+#### Durata della sessione Blade (e del suo token CSRF)
+
+Il token CSRF è legato alla sessione lato server. La sessione muore quando:
+- passano `SESSION_LIFETIME` minuti (default **120**) senza richieste → scade in Redis
+- chiami `/logout` → `$request->session()->invalidate()` la cancella
+- fai login → `$request->session()->regenerate()` ruota l'ID sessione
+  (anti session-fixation): la vecchia muore, ne nasce una nuova con nuovo CSRF
+
+Nel progetto `SESSION_EXPIRE_ON_CLOSE=false`, quindi la sessione **sopravvive
+alla chiusura del browser** fino allo scadere dei 120 minuti.
+
+Per React la durata equivalente è quella del token Sanctum, che **non scade mai
+automaticamente** (vedi flusso 10 in Parte II): vive finché `/api/logout` non lo
+revoca o l'admin non fa reset password (che cancella tutti i token dell'utente).
 
 ### Schema riassuntivo
 
@@ -759,20 +859,32 @@ cambia continuamente. L'utente lo legge dal display e lo digita nell'app. Vantag
 ### Verifica
 
 ```php
-foreach (stazioni 'attiva' as $s) {
-    if (Cache::get("codice:{$s}") === $codice) return $s;
+public function verifica(string $idStazione, string $codice): bool
+{
+    if (! $this->èFormattoValido($codice)) return false;
+    if (! $this->stazioneAttiva($idStazione)) return false;
+    return Cache::get("codice:{$idStazione}") === $codice;
 }
-return null;
 ```
 
-Iteriamo sulle stazioni attive (poche decine in dev): per ognuna controlliamo se il
-codice corrente coincide con quello digitato. È O(n) lineare sulle stazioni — perfetto
-per il volume previsto. Per produzione scalare basterebbe un indice inverso aggiuntivo
-(`codice_lookup:{NNNNNN} → id_stazione`).
+Verifica **diretta sulla singola stazione**, una sola `GET` su Redis. L'`id_stazione`
+arriva dal path della rotta `POST /api/{id_stazione}/verifica-codice`: il client lo
+conosce perché ha appena aperto la pagina di dettaglio di quella stazione dalla mappa.
+Quindi non c'è bisogno di "indovinare" su quale stazione il codice sia valido — sai
+già a quale lo stai sottoponendo.
+
+Conseguenze:
+- Complessità O(1) indipendente dal numero di stazioni nel sistema.
+- Lo stesso codice numerico può essere generato simultaneamente da stazioni diverse
+  senza problemi: la chiave Redis (`codice:{id_stazione}`) li tiene separati.
+- Non serve un indice inverso `codice → id_stazione`: il client porta lui l'id.
 
 > Importante: il codice **non viene cancellato** al match. Resta valido fino alla
-> scadenza naturale. L'unicità della prenotazione si gestisce a valle (SETNX, vedi
-> sotto).
+> scadenza naturale dei 60s. L'unicità della prenotazione si gestisce a valle, in
+> [`SessioneService::memorizzaCodiceInAttesa`](backend/src/app/Services/SessioneService.php),
+> con un `Cache::add` (semantica SETNX) sulla chiave `codice_pending:{id_stazione}`:
+> il primo utente che digita correttamente il codice prenota la stazione per 60s, gli
+> altri ricevono 409.
 
 ---
 
@@ -1399,23 +1511,161 @@ if (! $request->user() || $request->user()->ruolo !== 'admin') {
 Banale: legge `ruolo` dall'utente già caricato da Sanctum. Restituisce JSON 403 per i
 client REST (a differenza di `AdminMiddleware` che fa redirect per il flusso web).
 
-### Flusso G — Autenticazione WebSocket (canali privati)
+### Flusso G — Autorizzazione admin
 
-Quando il browser sottoscrive un canale privato (es. `private-user.{id_utente}` per i
-kWh real-time), Echo fa una richiesta di autorizzazione che deve essere autenticata
-**come se fosse una normale chiamata API**. Le rotte sono:
+L'admin è un utente come gli altri (stessa tabella `utenti`, stessa password bcrypt,
+stesso meccanismo di login/token) con in più una colonna `ruolo = 'admin'`. Non
+c'è una tabella separata, non c'è un'app dedicata. La differenza tra utente
+normale e admin si esaurisce in una stringa in DB e nei middleware che la verificano.
 
-- **`/broadcasting/auth`** (web, middleware `web` → cookie sessione) — usata da Blade.
-- **`/api/broadcasting/auth`** (API, middleware `auth:sanctum`) — usata da React
-  (registrata in [api.php:24](backend/src/routes/api.php#L24)).
+#### Come si diventa admin
 
-React deve essere configurato per puntare a `/api/broadcasting/auth` invece del default
-`/broadcasting/auth`, altrimenti Echo tenta l'auth col cookie (che non esiste in
-contesto SPA) e fallisce con 401 → niente real-time. Vedi dettagli in Parte I, sezione C.
+Non esiste un endpoint pubblico di "promozione". `Api\RegisterController` e
+`WebAuthController::register` non passano il campo `ruolo` al `create()`, quindi
+prende il default DB `'utente'` ([migration 0015](backend/src/database/migrations/0015_aggiunta_ruolo_utenti.php)).
+Per creare un admin si modifica la riga manualmente:
 
-L'handler dell'auth route ([`channels.php`](backend/src/routes/channels.php)) controlla
-che `$user->id_utente === $id_utente` per il canale `user.{id_utente}` (un utente può
-ascoltare solo i suoi eventi).
+```bash
+docker exec -it green_app php artisan tinker
+> App\Models\Utenti::where('email','admin@scuola.it')->update(['ruolo' => 'admin']);
+```
+
+Oppure i seed dei test pre-popolano alcuni utenti admin in `DatabaseSeeder`. È una
+scelta intenzionale: l'elevazione di privilegio è un'operazione amministrativa che
+non deve essere automatizzabile via API.
+
+#### Le due rotte protette in parallelo
+
+Anche per l'admin esistono **due UI parallele** (Blade tradizionale + React SPA) con
+due gruppi di rotte separati:
+
+| File | Prefisso | Middleware | Controller |
+|---|---|---|---|
+| [`routes/web.php`](backend/src/routes/web.php#L140) | `/admin/*` | `['auth', 'admin']` | `AdminController` (renderizza Blade) |
+| [`routes/api.php`](backend/src/routes/api.php#L76) | `/api/admin/*` | `['auth:sanctum', 'admin.api']` | `AdminApiController` (risponde JSON) |
+
+Stessa logica di business, output diverso. Il "doppio middleware" segue il pattern
+generale: prima ti riconosco, poi controllo se sei admin. Cambia solo *come* ti
+riconosco (cookie sessione vs Bearer token), il check di ruolo è identico.
+
+#### Step 1 — Autenticazione di base
+
+Il **primo middleware** della catena risolve l'utente partendo dal trasporto:
+
+- **Blade** → middleware `auth` (Sanctum guard `web` di default) → legge il cookie
+  `green_school_session`, recupera l'ID di sessione, cerca la riga in Redis, da
+  lì estrae `auth.id` e fa `Utenti::find($id)` → `$request->user()` valorizzato.
+  Se manca il cookie o la sessione è scaduta → redirect a `/login`.
+- **API** → middleware `auth:sanctum` → legge `Authorization: Bearer ...`, splitta
+  `id|plain`, cerca `personal_access_tokens.id = $id`, fa `hash_equals(sha256, plain)`,
+  carica `Utenti::find($row->tokenable_id)` → `$request->user()` valorizzato.
+  Se token mancante/invalido → 401 JSON.
+
+Al termine di questo step Laravel sa che chi sta chiedendo è Mario, MA non sa ancora
+se Mario può vedere quella pagina.
+
+#### Step 2 — Check del ruolo
+
+Il **secondo middleware** controlla esclusivamente il ruolo. È qui che cambia il
+comportamento in caso di rifiuto.
+
+[**`AdminMiddleware`**](backend/src/app/Http/Middleware/AdminMiddleware.php) (alias `admin`, Blade):
+
+```php
+public function handle(Request $request, Closure $next): Response
+{
+    if (! $request->user()) {
+        return redirect()->route('login');                                  // non loggato
+    }
+    if ($request->user()->ruolo !== 'admin') {
+        return redirect()->route('map')
+            ->with('error', 'Solo gli amministratori sono autorizzati ...'); // loggato ma non admin
+    }
+    return $next($request);
+}
+```
+
+Scelta esplicita di **NON usare `abort(403)`**: una pagina bianca 403 in Blade può
+in certi casi rompere il flusso della sessione. Il redirect su `/map` con flash
+message preserva la sessione e mostra un feedback chiaro nell'UI dell'utente
+normale (banner rosso "non autorizzato"). È un comportamento "gentile" coerente
+con UX server-rendered.
+
+[**`AdminApiMiddleware`**](backend/src/app/Http/Middleware/AdminApiMiddleware.php) (alias `admin.api`, API):
+
+```php
+public function handle(Request $request, Closure $next): Response
+{
+    if (! $request->user() || $request->user()->ruolo !== 'admin') {
+        return response()->json(['message' => 'Accesso riservato agli amministratori.'], 403);
+    }
+    return $next($request);
+}
+```
+
+Qui sì che ritorna **403 JSON** secco: la SPA legge il body, mostra il messaggio
+nell'UI React, non c'è "pagina" da renderizzare lato server. Niente redirect lato
+backend — eventuali redirect sono responsabilità del router React.
+
+#### Step 3 — Le rotte ammesse
+
+Una volta passati entrambi i middleware, le rotte del gruppo admin sono accessibili.
+
+```php
+// web.php — Blade
+Route::middleware(['auth', 'admin'])->prefix('admin')->group(function () {
+    Route::get('/utenti',                  [AdminController::class, 'utenti']);
+    Route::get('/stazioni',                [AdminController::class, 'stazioni']);
+    Route::post('/stazioni/{id}/toggle',   [AdminController::class, 'toggleStazione']);
+    Route::post('/stazioni/{id}/setup',    [AdminController::class, 'completaSetupStazione']);
+    // ...
+});
+
+// api.php — React
+Route::middleware(['auth:sanctum', 'admin.api'])->prefix('admin')->group(function () {
+    Route::get('/dashboard',               [AdminApiController::class, 'dashboard']);
+    Route::get('/utenti',                  [AdminApiController::class, 'utenti']);
+    Route::post('/utenti/{id}/reset',      [AdminApiController::class, 'resetPassword']);
+    Route::post('/stazioni/{id}/toggle',   [AdminApiController::class, 'toggleStazione']);
+    // ...
+});
+```
+
+Il check di ruolo si applica a **ogni richiesta**, non solo al login: se mentre Mario
+è loggato un altro admin lo declassa a `'utente'` via `PUT /api/admin/utenti/{id}`,
+il prossimo `GET /api/admin/dashboard` di Mario verrà rifiutato con 403. Il token
+Sanctum resta valido (Mario è autenticato), ma non basta più per le rotte admin.
+
+#### Sicurezza vs UX nei messaggi di errore
+
+I due middleware distinguono volutamente i due esiti:
+
+- **Non autenticato** (`! $request->user()`):
+  - Blade → redirect a `/login` (porta l'utente a loggarsi).
+  - API → 401 JSON (il client React saprà che deve rifare login).
+- **Autenticato ma non admin** (`ruolo !== 'admin'`):
+  - Blade → redirect a `/map` + flash error (utente normale che ha provato `/admin` via URL).
+  - API → 403 JSON (qualcuno con token valido ha provato una rotta admin).
+
+Distinguere 401/403 sull'API è importante perché il client React reagisce in modo
+diverso: 401 → "il tuo token è morto, logout automatico"; 403 → "il tuo token è
+vivo ma non hai diritti per questa cosa, mostro un errore inline senza farti
+rifare login".
+
+#### Cosa NON c'è (intenzionalmente)
+
+- **Niente permessi granulari** (es. "questo admin può gestire stazioni ma non
+  resettare password"). Il ruolo è binario: `utente` o `admin`. Se domani serve
+  granularità si aggiunge una tabella `ruoli_utenti` o un campo JSON `permessi`,
+  ma oggi non è giustificato dal volume del progetto.
+- **Niente revoca selettiva di token admin**. Se vuoi disconnettere un admin
+  immediatamente devi cambiargli il ruolo (effetto al prossimo request) o resettargli
+  la password (`AdminApiController::resetPassword` cancella **tutti** i suoi token).
+  Non esiste un endpoint dedicato "kill all admin sessions of user X".
+- **Niente log d'azione admin**. Le modifiche fatte dal pannello admin (es. toggle
+  stazione, reset password utente) **non** vengono tracciate in una tabella di
+  audit log. Per produzione conviene aggiungerne uno
+  (`audit_log: id, id_utente_admin, azione, target_id, payload_json, ts`).
 
 ### Schema riassuntivo
 
@@ -1502,44 +1752,71 @@ Definite in [`routes/api.php`](backend/src/routes/api.php).
 
 ### Pubbliche
 
-| Method | Path | Controller |
-|---|---|---|
-| POST | `/api/login` | `AuthController::login` |
-| POST | `/api/iot/registra` | `IotController::Registra` |
+| Method | Path | Controller | Azione |
+|---|---|---|---|
+| GET  | `/api/health` | (closure inline) | Healthcheck per Docker: risponde `{ status: "ok" }`, non tocca il DB. |
+| POST | `/api/login` | `AuthController::login` | Login utente. Valida email/password con `Hash::check`, controlla lockout e `attivo`, ritorna `access_token` Sanctum. Lockout 5 tentativi → 423 per 15 min. |
+| POST | `/api/register` | `RegisterController::register` | Registrazione utente. Crea riga `utenti` (UUID, bcrypt, `tipo_account='completo'`, `ruolo='utente'` default) ed emette subito un token Sanctum (auto-login). |
+| POST | `/api/iot/registra` | `IotController::Registra` | Registrazione colonnina. Valida password globale con `hash_equals`, normalizza MAC uppercase. Se MAC sconosciuto crea `stazioni` (`stato_setup='in_setup'`) + N punti placeholder. Idempotente: MAC noto → ritorna i dati esistenti. |
 
 ### Autenticate (`auth:sanctum`)
 
-| Method | Path | Controller |
-|---|---|---|
-| GET  | `/api/stations` | `StationController::all` (filtro `stato_setup='attiva'`) |
-| GET  | `/api/station/{id}` | `StationController::show` |
-| GET  | `/api/school/profile` | `SchoolController::profile` |
-| GET  | `/api/school/consumption` | `SchoolController::consumption` |
-| GET  | `/api/gamification/profile` | `GamificationController::profile` |
-| GET  | `/api/gamification/badges` | `GamificationController::badges` |
-| GET  | `/api/gamification/leaderboard` | `GamificationController::leaderboard` |
-| GET  | `/api/gamification/sessioni` | `GamificationController::sessioni` |
-| POST | `/api/{id_stazione}/verifica-codice` | `SessionController::AutenticazioneCodice` |
-| GET  | `/api/me/sessione-attiva` | `SessionController::SessioneAttivaUtente` |
-| GET  | `/api/session/{id}` | `SessionController::show` |
-| POST | `/api/session/{id}/stop` | `SessionController::InterrompiSessione` |
-| POST | `/api/logout` | `AuthController::logout` |
+| Method | Path | Controller | Azione |
+|---|---|---|---|
+| GET  | `/api/stations` | `StationController::all` | Lista stazioni con `stato_setup='attiva'` e relativi `punti_ricarica` eager-load. Usata da mappa React/Blade per il primo fetch. |
+| GET  | `/api/station/{id}` | `StationController::show` | Dettaglio singola stazione con tutti i punti. Usata da `StationDetailPage` per la pagina di dettaglio. |
+| GET  | `/api/school/profile` | `SchoolController::profile` | Profilo edificio scuola: classe energetica, anno costruzione, superficie, FV installato, interventi (JSON). |
+| GET  | `/api/school/consumption` | `SchoolController::consumption` | 12 mesi di consumi per anno selezionato (`?anno=YYYY`): elettrico, termico, FV, CO₂. Ritorna anche elenco anni disponibili per il selettore. |
+| GET  | `/api/gamification/profile` | `GamificationController::profile` | XP totali, livello (generated column), soglia prossimo livello, streak giorni, CO₂ risparmiata, sessioni totali. |
+| GET  | `/api/gamification/badges` | `GamificationController::badges` | `{ sbloccati: [...], da_sbloccare: [...] }` con icona, nome, descrizione, data sblocco. |
+| GET  | `/api/gamification/leaderboard` | `GamificationController::leaderboard` | Top 10 utenti per XP con livello, sessioni totali, CO₂ risparmiata. |
+| GET  | `/api/gamification/sessioni` | `GamificationController::sessioni` | Ultime 10 sessioni dell'utente con kWh, durata, costo, XP guadagnati. |
+| GET  | `/api/gamification/sfide` | `GamificationController::sfide` | 3 sfide settimanali ricalcolate al volo da `SfideSettimanaliService`: progresso, target, bonus XP. |
+| POST | `/api/{id_stazione}/verifica-codice` | `SessionController::AutenticazioneCodice` | Verifica codice 6 cifre contro Redis `codice:{mac}`. Se ok, fa `Cache::add` (SETNX) su `codice_pending:{mac}` con TTL 60s (rendez-vous codice→cavo) e publish MQTT `autenticazione_completata`. Ritorna `202 Attesa_Cavo`. 409 se un altro utente è già in attesa. |
+| GET  | `/api/me/sessione-attiva` | `SessionController::SessioneAttivaUtente` | Sessione attualmente attiva (`data_fine IS NULL`) dell'utente loggato, con kWh live letti da Redis. `{ attiva: false }` se nessuna in corso. Polling-friendly. |
+| GET  | `/api/me/attesa-cavo` | `SessionController::AttesaCavo` | Secondi residui del rendez-vous codice→cavo per la stazione passata in query (`?id_stazione=...`). Usato dal banner "in attesa del cavo" React. |
+| GET  | `/api/session/{id}` | `SessionController::show` | Stato di una sessione: kWh attuali (Redis se aperta, DB se chiusa), durata in minuti. |
+| POST | `/api/session/{id}/stop` | `SessionController::InterrompiSessione` | Interrompe la sessione: ownership check (`id_utente`), chiama `SessioneService::termina` (→ `sp_termina_sessione`, gamification, broadcast), publish MQTT STOP al punto. 409 se sessione già chiusa, 403 se non sua. |
+| POST | `/api/logout` | `AuthController::logout` | Revoca **solo il token corrente** (`currentAccessToken()->delete()`). Eventuali altri token dello stesso utente restano validi (es. mobile + Postman). |
+| POST | `/api/broadcasting/auth` | (registrato da `Broadcast::routes`) | Autorizza Echo a sottoscrivere PrivateChannel. Legge `socket_id`/`channel_name` dal body, consulta `channels.php`, firma HMAC con `APP_KEY`. Dettagli in Parte I, sezione C. |
 
-### Web admin (`auth` + `admin`)
+### Web admin Blade (`auth` + `admin`)
 
-| Method | Path | Azione |
-|---|---|---|
-| GET  | `/admin` | dashboard |
-| GET  | `/admin/utenti` | lista utenti |
-| GET  | `/admin/utenti/{id}` | dettaglio utente |
-| POST | `/admin/utenti/{id}` | modifica |
-| POST | `/admin/utenti/{id}/toggle` | attiva/disattiva |
-| POST | `/admin/utenti/{id}/reset` | reset password |
-| GET  | `/admin/sessioni` | lista sessioni |
-| GET  | `/admin/stazioni` | lista stazioni (tag online derivato) |
-| GET  | `/admin/stazioni/{id}/setup` | form setup |
-| POST | `/admin/stazioni/{id}/setup` | salva e attiva |
-| POST | `/admin/stazioni/{id}/toggle` | toggle manutenzione |
+Tutte servono HTML con `view(...)`. Sotto prefisso `/admin/*` in [`routes/web.php`](backend/src/routes/web.php). Controller: `AdminController`.
+
+| Method | Path | Controller | Azione |
+|---|---|---|---|
+| GET  | `/admin` | `AdminController::dashboard` | Dashboard Blade: KPI globali (utenti, sessioni, kWh, revenue), grafico settimanale, top utenti, ultime sessioni. |
+| GET  | `/admin/utenti` | `AdminController::utenti` | Lista utenti paginata con filtri di ricerca. |
+| GET  | `/admin/utenti/{id}` | `AdminController::dettaglioUtente` | Dettaglio utente: anagrafica, sessioni storiche, profilo gamification, badge sbloccati. |
+| POST | `/admin/utenti/{id}` | `AdminController::modificaUtente` | Update anagrafica (nome, cognome, email, cellulare, `tipo_account`, `ruolo`). Redirect + flash. |
+| POST | `/admin/utenti/{id}/toggle` | `AdminController::toggleAttivo` | Flip `attivo`. Utenti disattivati non possono più loggarsi (check al login). |
+| POST | `/admin/utenti/{id}/reset` | `AdminController::resetPassword` | Reset password con `Hash::make`. **Cancella tutti i token Sanctum** dell'utente → disconnette ogni sua sessione API attiva. |
+| GET  | `/admin/sessioni` | `AdminController::sessioni` | Lista sessioni paginata con kWh live da Redis per quelle ancora aperte. |
+| GET  | `/admin/stazioni` | `AdminController::stazioni` | Lista stazioni con badge derivato: online se ≥1 punto online e non in manutenzione. |
+| GET  | `/admin/stazioni/{id}/setup` | `AdminController::setupStazione` | Form di setup precompilato con i punti già esistenti. |
+| POST | `/admin/stazioni/{id}/setup` | `AdminController::completaSetupStazione` | Sanity check `id_punto` coerenti col DB, UPDATE in place su `stazioni` + `punti_ricarica`, publish MQTT `ready`. Flusso §2. |
+| POST | `/admin/stazioni/{id}/toggle` | `AdminController::toggleStazione` | Toggle manutenzione: stato `'manutenzione_programmata'` sui punti, broadcast per-punto, publish MQTT, check sessione attiva → flash error 409. Flusso §3. Duplicato di `AdminApiController::toggleStazione`. |
+| GET  | `/admin/report/csv` | `AdminController::scaricaReportCsv` | Esporta sessioni in CSV. Filtri: per utente o per data. |
+
+### Admin API React (`auth:sanctum` + `admin.api`)
+
+Stesse operazioni della tabella sopra, ma risposte JSON per la SPA admin React. Sotto prefisso `/api/admin/*` in [`routes/api.php`](backend/src/routes/api.php). Controller: `AdminApiController`.
+
+| Method | Path | Controller | Azione |
+|---|---|---|---|
+| GET  | `/api/admin/dashboard` | `AdminApiController::dashboard` | Stessi KPI della Blade dashboard ma in JSON: stats globali, sessioni settimana, top utenti, ultime sessioni. |
+| GET  | `/api/admin/utenti` | `AdminApiController::utenti` | Lista utenti paginata + sessioni/kWh per utente già aggregati. |
+| GET  | `/api/admin/utenti/{id}` | `AdminApiController::dettaglioUtente` | Anagrafica + sessioni paginate + profilo gamification + badge + stats. |
+| PUT  | `/api/admin/utenti/{id}` | `AdminApiController::modificaUtente` | Update anagrafica (validate strict). 404 JSON se utente non esiste. |
+| POST | `/api/admin/utenti/{id}/toggle` | `AdminApiController::toggleUtente` | Flip `attivo` e ritorna nuovo stato. |
+| POST | `/api/admin/utenti/{id}/reset` | `AdminApiController::resetPassword` | Reset password + revoca **tutti** i token Sanctum dell'utente. |
+| GET  | `/api/admin/sessioni` | `AdminApiController::sessioni` | Lista sessioni paginata con filtri (ricerca utente, stato) e kWh live da Redis. |
+| GET  | `/api/admin/stazioni` | `AdminApiController::stazioni` | Stato aggregato stazioni: punti totali/liberi/online, badge `online` derivato. |
+| GET  | `/api/admin/stazioni/{id}/setup` | `AdminApiController::setupStazione` | Pre-fetch del form setup: stazione + tutti i punti correnti. |
+| POST | `/api/admin/stazioni/{id}/setup` | `AdminApiController::completaSetupStazione` | Salva metadati stazione + punti, publish MQTT `ready`. 422 JSON se gli `id_punto` inviati non corrispondono al DB. |
+| POST | `/api/admin/stazioni/{id}/toggle` | `AdminApiController::toggleStazione` | Toggle manutenzione (versione JSON). Flusso §3. **Tenere allineato con AdminController::toggleStazione del Blade.** |
+| GET  | `/api/admin/report/csv` | `AdminApiController::scaricaReportCsv` | Esporta CSV (binary response con `Content-Disposition: attachment`). |
 
 ---
 
