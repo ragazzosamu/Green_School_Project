@@ -123,7 +123,7 @@ La collezione Postman pronta all'uso sta nella root: [`Green_School_Project.post
 | `POST` | `/admin/utenti/{id}/reset`    | Reset password |
 | `GET`  | `/admin/sessioni`             | Tutte le sessioni paginate (kWh live da Redis per quelle aperte) |
 | `GET`  | `/admin/stazioni`             | Stato aggregato stazioni (`online`, `liberi/totali`, manutenzione) |
-| `POST` | `/admin/stazioni/{id}/toggle` | Metti/togli stazione in manutenzione |
+| `POST` | `/admin/stazioni/{id}/toggle` | Metti/togli stazione in manutenzione. Entrando: imposta `stato_hardware='manutenzione_programmata'` su tutti i punti (HeartbeatChecker lo ignora → niente lampeggio online/offline), dispatcha `StazioneStatusChanged(libera=false)` + N × `PuntoHardwareStatusChanged` (uno per ogni punto), publish MQTT `stazione/{mac}/manutenzione {on:true}`. Uscendo: punti a `'offline'` + N broadcast, MQTT `{on:false}`. Bloccato con 409 se c'è una sessione attiva. Vedi flusso 3 in `ARCHITECTURE.md` per i dettagli. |
 | `GET`  | `/admin/stazioni/{id}/setup`  | Pre-setup (per il form Completa Setup) |
 | `POST` | `/admin/stazioni/{id}/setup`  | Conferma setup (nome, indirizzo, coordinate) |
 | `GET`  | `/admin/report/csv?...`       | Esporta sessioni in CSV (filtrabile per utente/giorno) |
@@ -177,13 +177,26 @@ un token Sanctum e lo salva in `session('api_token')`. Serve al JS dentro le Bla
 
 ### 2. Difese contro brute force
 
-Stesso codice in entrambi i controller:
+Stesso codice in entrambi i controller (`AuthController` e `WebAuthController`),
+costanti `MAX_TENTATIVI = 5` e `BLOCCO_MINUTI = 15`:
 
-- **Lockout dopo 5 tentativi falliti** → `login_bloccato_fino = now() + 15 minuti`.
-- Il counter `login_tentativi` si azzera ad ogni login riuscito.
-- Risposta in caso di blocco: **HTTP 429** con `Retry-After: <secondi>`.
-- Check `attivo`: se un admin ha disabilitato l'utente (`/admin/utenti/{id}/toggle`),
-  qualsiasi login fallisce con **HTTP 403**.
+- **Check lockout prima della password**: se `login_bloccato_fino > now()` la richiesta
+  viene bloccata **prima** ancora di confrontare la password. Questo evita che un
+  attaccante, durante il blocco, possa scoprire dalla risposta "credenziali errate"
+  se la password che stava provando era corretta (oracolo).
+- **Counter incrementato solo se l'utente esiste**: per email inesistente la risposta
+  è generica `"Credenziali non valide"` (HTTP 401) senza incrementare nulla. Mantiene
+  il messaggio simmetrico → niente enumeration delle email registrate.
+- **Lockout dopo 5 tentativi falliti consecutivi** → `login_bloccato_fino = now() + 15 minuti`,
+  `login_tentativi` azzerato (così al prossimo ciclo riparte pulito).
+- **Risposta in caso di blocco: HTTP 423 Locked** (non 429) con messaggio che include
+  i minuti rimanenti calcolati lato server. Nessun header `Retry-After`.
+- **Risposta a login fallito non bloccante**: HTTP 401 con `tentativi_rimasti` nel body
+  (solo per la versione API; il Blade flash-a il messaggio in sessione).
+- **Check `attivo`**: se un admin ha disabilitato l'utente (`/admin/utenti/{id}/toggle`)
+  il login viene rifiutato con **HTTP 403** anche con credenziali corrette. Nota: il
+  check avviene solo al login → un utente già loggato resta operativo finché il token
+  non viene revocato (es. via `/admin/utenti/{id}/reset` che cancella tutti i token).
 
 ### 3. Usare il token Sanctum (per client API)
 
@@ -215,11 +228,21 @@ boot non ha credenziali, ma è protetta da:
   quel MAC, Laravel crea il record `stazioni` con `stato_setup='in_setup'`. Se il MAC
   esiste già, restituisce l'`id_stazione` esistente (registrazione idempotente).
 
-Body atteso:
+Body atteso (nomi campi esattamente come da [`IotController::Registra`](src/app/Http/Controllers/Api/IotController.php)):
 ```json
-{ "mac_address": "AA:BB:CC:DD:EE:01", "numero_punti": 2,
-  "password_registrazione": "greenschool-iot-2025" }
+{ "mac": "AA:BB:CC:DD:EE:01", "password": "greenschool-iot-2025", "numero_punti": 2 }
 ```
+
+Validazione:
+- `mac`: required, string, max:32 (oggi senza regex format check — punto di
+  miglioramento per produzione: aggiungere `regex:/^[0-9A-Fa-f:.\-]{12,32}$/`).
+- `password`: required, confrontata con `hash_equals` contro
+  `config('services.iot.registration_password')`.
+- `numero_punti`: required, integer, min:1, max:10.
+
+La risposta `201 Created` include `id_stazione` (= MAC normalizzato uppercase),
+`stato_setup`, `id_punti` (array di stringhe `"1".."N"`), e tutti i topic MQTT
+preformattati che la colonnina deve usare per heartbeat/telemetria/eventi/comandi.
 
 > Dopo questa singola chiamata HTTP la colonnina **non parla più HTTP**: tutto il resto
 > (heartbeat, telemetria, eventi, comandi) viaggia su MQTT. Vedi
@@ -372,7 +395,7 @@ all'interno dei container dedicati.
 | Comando | Container | Cosa fa |
 |---|---|---|
 | **`MqttWorker`** (`mqtt:leggi`) | `green_mqtt_worker` | Loop infinito che si iscrive ai topic MQTT `stazione/#/eventi`, `stazione/#/telemetria`, `stazione/#/codice`, `stazione/#/heartbeat`. Per ogni messaggio: aggiorna DB/Redis, dispatcha eventi broadcast (es. `TelemetriaRicevuta`), e — quando arriva `cavo_collegato` — chiude il rendez-vous codice→cavo avviando la sessione. È il punto di contatto tra il mondo IoT e il mondo Laravel. |
-| **`HeartbeatChecker`** (`app:heartbeat-checker`) | `green_heartbeat_checker` | Loop con sleep di ~10s. Marca offline (`stato_hardware = 'offline'`) i punti che non hanno mandato heartbeat oltre la soglia. Dispatch `PuntoHardwareStatusChanged` solo se lo stato cambia, per evitare event-spam. |
+| **`HeartbeatChecker`** (`app:heartbeat-checker`) | `green_heartbeat_checker` | Loop infinito con `sleep(60)` (`INTERVALLO_CHECK_SEC`). Per ogni punto: se `data_ultimo_heartbeat < now - 120s` (`SOGLIA_OFFLINE_SEC`, = 2 heartbeat persi consecutivi) e `stato_hardware === 'online'` → marca `'offline'`. Viceversa se heartbeat fresco e stato attuale `'offline'` → marca `'online'`. **Ignora completamente** punti con `stato_hardware ∈ {'manutenzione_programmata', 'guasto'}` perché i due `if` controllano stringhe esatte. Dispatch `PuntoHardwareStatusChanged` solo se lo stato cambia (anti event-spam) e, se almeno un punto è cambiato, ricalcola `stazioni.libera` aggregato e dispatcha `StazioneStatusChanged` solo se anche quello è cambiato. Latenza massima per rilevare un offline reale: 60s (check) + 120s (soglia) = **3 minuti**. Vedi flusso 8 in `ARCHITECTURE.md` per il diagramma completo. |
 
 ---
 

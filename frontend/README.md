@@ -148,9 +148,10 @@ browser) restano validi.
 
 | HTTP | Significato                            | Cosa fa la SPA                                  |
 |------|-----------------------------------------|-------------------------------------------------|
-| 401  | Token mancante o revocato               | Logout automatico, redirect a `/react/login`    |
-| 403  | Token valido ma rotta non autorizzata (es. admin) | Mostra messaggio "Non autorizzato"   |
-| 429  | Lockout dopo 5 login falliti            | Mostra il countdown letto da `Retry-After`      |
+| 401  | Token mancante / revocato, oppure credenziali errate a `/api/login` (body include `tentativi_rimasti`) | Logout automatico (se token vivo) o messaggio inline al form login |
+| 403  | Token valido ma rotta non autorizzata (es. admin), oppure account `attivo=false` | Mostra messaggio "Non autorizzato" / "Account disattivato"  |
+| 422  | Validazione fallita (es. email duplicata in registrazione, codice 6 cifre non valido) | Mostra messaggi inline per campo dal body `{ errors }` |
+| 423  | **Lockout** dopo 5 login falliti, blocco 15 min — messaggio nel body include i minuti residui | Mostra il messaggio così com'è (nessun header `Retry-After` da consultare) |
 
 ---
 
@@ -221,6 +222,21 @@ window.Echo = new Echo({
 |------------------------------|----------|-------------------------------------------------------------------|
 | `private-user.{id_utente}`   | privato  | `.sessione.avviata`, `.ricarica.heartbeat` (delta kWh ogni ~5s)   |
 | `mappa`                      | pubblico | `.punto.status`, `.punto.hardware.status`, `.stazione.status`     |
+
+### Dove ci si sottoscrive al canale `mappa`
+
+Due pagine, due hook/effect:
+
+- **`MapPage`** via [`useStationsEcho`](src/hooks/useStationsEcho.js) → riceve i 3 eventi
+  e aggiorna lo state delle stazioni. `markerColor()` ricalcola il colore del pallino
+  guardando `punti_ricarica[i].stato_hardware` e `.libera` (NON guarda
+  `station.libera`: `.stazione.status` aggiorna il campo ma di fatto non viene letto
+  per il rendering — è un "evento informativo" tenuto per coerenza/futuro).
+- **`StationDetailPage`** via `useEffect` inline (stesso schema di `useStationsEcho`,
+  filtrato per `id` della stazione corrente) → aggiorna `setStazione` quando arrivano
+  eventi per quel MAC. Senza questa sottoscrizione, mettendo una stazione in
+  manutenzione da un altro dispositivo non si vedeva il cambio in tempo reale e
+  bisognava cambiare pagina per forzare il refetch.
 
 Esempio sottoscrizione (`useEffect` dentro la pagina sessione):
 

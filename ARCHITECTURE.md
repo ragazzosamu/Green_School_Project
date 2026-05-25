@@ -30,14 +30,16 @@ Per setup e comandi vedi [`README.md`](README.md).
 - [5. Avvio sessione](#5-avvio-sessione-di-ricarica)
 - [6. Telemetria e kWh live](#6-telemetria-e-kwh-live)
 - [7. Terminazione sessione](#7-terminazione-sessione)
-- [8. Gamification](#8-gamification)
+- [8. Heartbeat e rilevamento offline](#8-heartbeat-e-rilevamento-offline)
+- [9. Gamification](#9-gamification)
+- [10. Login e registrazione utente](#10-login-e-registrazione-utente)
 
 **Parte III — Reference**
-- [9. API REST](#9-api-rest)
-- [10. Middleware](#10-middleware)
-- [11. Topic MQTT](#11-topic-mqtt)
-- [12. WebSocket](#12-websocket)
-- [13. Schema DB completo](#13-schema-db-completo)
+- [11. API REST](#11-api-rest)
+- [12. Middleware](#12-middleware)
+- [13. Topic MQTT](#13-topic-mqtt)
+- [14. WebSocket](#14-websocket)
+- [15. Schema DB completo](#15-schema-db-completo)
 
 ---
 
@@ -534,22 +536,194 @@ potenza). Senza setup, la stazione **non compare** sulla mappa pubblica.
 ### Concetto
 
 L'admin può fermare una stazione (per intervento fisico, malfunzionamento, ecc.) senza
-toccare il DB nei punti delicati: imposta solo un **flag** e manda un comando MQTT alla
-colonnina.
+toccare il DB nei punti delicati: imposta solo un **flag** sulla stazione, marca i punti
+con uno stato hardware dedicato, manda un comando MQTT alla colonnina perché smetta di
+generare codici e heartbeat, e broadcast WebSocket perché tutte le UI aperte (mappa,
+pagina di dettaglio, admin) si aggiornino immediatamente sugli altri dispositivi.
 
-### Flusso ([`AdminController::toggleStazione`](backend/src/app/Http/Controllers/AdminController.php))
+Il flusso esiste in due copie speculari per i due frontend admin:
+- **React** → `POST /api/admin/stazioni/{mac}/toggle` → [`AdminApiController::toggleStazione`](backend/src/app/Http/Controllers/Api/AdminApiController.php)
+- **Blade** → form sull'admin classico → [`AdminController::toggleStazione`](backend/src/app/Http/Controllers/AdminController.php)
 
-1. Flip booleano di `stazioni.in_manutenzione`.
-2. Se entra in manutenzione: UPDATE di tutti i punti della stazione a `stato_hardware='offline'`.
-   La mappa lo riflette subito senza aspettare il prossimo heartbeat.
-3. **Publish MQTT** su `stazione/{mac}/manutenzione` con `{ "comando": "manutenzione", "on": true|false }`.
-4. La colonnina riceve: se `on=true` ferma generazione codice e heartbeat; se `on=false`
-   riparte.
+I due metodi eseguono **la stessa identica sequenza** (descritta sotto) e si differenziano
+solo nel formato della risposta (JSON vs redirect+flash). Tenere sincronizzate le due
+copie è una regola del team: ogni modifica deve essere replicata.
+
+### Pre-condizione bloccante
+
+Se la stazione ha **una sessione di ricarica attiva** (`sessioni_ricarica.data_fine IS NULL`),
+il toggle in entrata viene rifiutato: fermare la stazione interromperebbe la sessione di
+un utente. Risposta `409 Conflict` (API) o flash error (Blade). Il toggle in uscita
+(fine manutenzione) non ha pre-condizioni.
+
+### Step 1 — DB update sulla stazione
+
+```sql
+UPDATE stazioni SET in_manutenzione = NOT in_manutenzione WHERE id_stazione = ?
+```
+
+`in_manutenzione` è il flag autoritativo. Lo leggono:
+- `MqttWorker::gestisciHeartbeat` per scartare heartbeat in volo (vedi Step 4).
+- `AdminApiController::stazioni` / `dashboard` per il conteggio "offline" nella lista admin.
+- I controller mappa per *non* sommare la stazione tra quelle libere.
+
+### Step 2 — DB update sui punti
+
+Tutti i punti della stazione vengono aggiornati a uno stato hardware dipendente dalla
+direzione del toggle:
+
+```php
+$nuovoStatoHw = $nuovoStato ? 'manutenzione_programmata' : 'offline';
+UPDATE punti_ricarica SET stato_hardware = $nuovoStatoHw WHERE id_stazione = ?
+```
+
+- **Entrata in manutenzione** → `'manutenzione_programmata'`. Stato dedicato che
+  [`HeartbeatChecker`](backend/src/app/Console/Commands/HeartbeatChecker.php) **ignora
+  completamente** (i due `if` controllano solo `'online'`/`'offline'`, e la query del
+  calcolo `libera` aggregato esclude esplicitamente `'manutenzione_programmata'` con
+  `whereNotIn`). Senza questo stato dedicato, HeartbeatChecker vedrebbe i punti come
+  `'offline'` + heartbeat fresco e li rimetterebbe `'online'` ogni 60s, causando un
+  "lampeggio" stato online → offline → online finché il simulatore non smette davvero
+  di mandare heartbeat (~2 min dopo aver ricevuto il comando MQTT).
+- **Uscita dalla manutenzione** → `'offline'`. Da qui il prossimo heartbeat MQTT valido
+  riporta naturalmente i punti `'online'` via HeartbeatChecker (vedi flusso 6 e codice
+  in [`HeartbeatChecker::controlloUnGiro`](backend/src/app/Console/Commands/HeartbeatChecker.php)).
+
+### Step 3 — Broadcast WebSocket (canale `mappa`)
+
+L'aggiornamento del DB da solo non basta: i browser hanno una **cache locale** delle
+stazioni popolata al caricamento di `/api/stations` (vedi `useStationsEcho` in React,
+`stazioniDataMap` nel Blade) e da quel momento si fidano solo degli eventi WebSocket per
+aggiornarla. Senza eventi, gli altri dispositivi vedono ancora lo stato vecchio finché
+non ricaricano la pagina.
+
+Si dispatchano **due gruppi di eventi**:
+
+**a) Un `StazioneStatusChanged` (solo entrando in manutenzione)**
+
+```php
+StazioneStatusChanged::dispatch($id, /*libera*/ false);
+```
+- Canale: `mappa` (pubblico).
+- Evento: `.stazione.status`.
+- Payload: `{ id_stazione, libera: false }`.
+- Effetto sui listener: aggiornano `station.libera = false` nello state. Non cambia il
+  colore del pallino (perché `markerColor` legge dai punti, non dall'aggregato) ma serve
+  come segnale di "indisponibilità aggregata" per consumer futuri.
+
+**b) Un `PuntoHardwareStatusChanged` per ogni punto della stazione (sempre, in entrata e in uscita)**
+
+```php
+foreach ($puntiIds as $idPunto) {
+    PuntoHardwareStatusChanged::dispatch($idPunto, $nuovoStatoHw, $id);
+}
+```
+- Canale: `mappa` (pubblico).
+- Evento: `.punto.hardware.status`.
+- Payload: `{ id_punto, stato_hardware, id_stazione }`.
+- Effetto sui listener: aggiornano `punti_ricarica[i].stato_hardware` nella cache
+  locale. Da qui:
+  - **Mappa** (React in [`MapPage.jsx`](frontend/src/pages/MapPage.jsx) e Blade in
+    [`map.blade.php`](backend/src/resources/views/map.blade.php)) ricalcola
+    `markerColor()`. Siccome ora nessun punto ha `stato_hardware === 'online'`,
+    `tuttiOffline` diventa `true` → pallino **grigio in tempo reale**.
+  - **Pagina di dettaglio stazione** ([`StationDetailPage.jsx`](frontend/src/pages/StationDetailPage.jsx) e
+    [`station-detail.blade.php`](backend/src/resources/views/station-detail.blade.php))
+    aggiorna ogni card presa: classe `stato-offline`, dot grigio, badge "Offline",
+    rimuove il bottone "Scegli". Ricalcola anche i chip "Libere/In uso/Totale".
+
+Questo è il broadcast che porta l'UI aggiornata sugli **altri dispositivi** che hanno
+una pagina aperta ma non hanno fatto l'azione: senza, devono cambiare pagina per
+forzare un refetch.
+
+### Step 4 — Publish MQTT verso la colonnina
+
+```php
+$mqtt->publish("stazione/{$id}/manutenzione", json_encode([
+    'comando' => 'manutenzione',
+    'on'      => $nuovoStato,
+]));
+```
+
+- Topic: `stazione/{mac}/manutenzione`.
+- Se `on=true`: il simulatore (o l'Arduino reale) ferma `_loop_codice` e `_loop_heartbeat`.
+  Da quel momento non arrivano più heartbeat al backend.
+- Se `on=false`: i loop ripartono. Il primo heartbeat che arriva tornerà online il punto
+  via HeartbeatChecker entro 60s.
+
+La pubblicazione MQTT è dentro un `try/catch`: se il broker è giù, il fallimento viene
+loggato ma **il toggle non viene rolled-back**. Il DB e i broadcast WebSocket sono già
+applicati, quindi l'admin vede comunque l'effetto. La colonnina resterà "viva" finché
+non riceve l'ordine; al massimo dopo qualche ciclo di heartbeat persi diventerà offline
+autonomamente (vedi flusso 6).
+
+### Step 5 — Guard sul worker MQTT
+
+Anche con lo Step 4 c'è una piccola finestra: tra il `publish` e il momento in cui il
+simulatore riceve e processa il comando, può inviare ancora un heartbeat in coda. Per
+evitare che `HeartbeatChecker` veda `data_ultimo_heartbeat` aggiornato e *si confonda*
+quando la manutenzione termina (potrebbe rimettere `'online'` un punto prima che il
+simulatore abbia davvero ripreso), [`MqttWorker::gestisciHeartbeat`](backend/src/app/Console/Commands/MqttWorker.php)
+controlla `stazioni.in_manutenzione` prima di scrivere:
+
+```php
+if ($inManutenzione) {
+    return; // scarta heartbeat
+}
+```
+
+Cintura di sicurezza che rende l'intero flusso robusto anche con race condition di
+qualche secondo tra publish MQTT e applicazione del comando lato dispositivo.
+
+### Schema riassuntivo
+
+```
+   [admin]                              [backend]                              [altri dispositivi]
+     │  POST /api/admin/stazioni/{mac}/toggle                                          │
+     │ ─────────────────────────────►   │                                              │
+     │                                  │  check sessione attiva → 409 se sì            │
+     │                                  │                                              │
+     │                                  │  UPDATE stazioni.in_manutenzione = true       │
+     │                                  │  UPDATE punti_ricarica.stato_hardware =      │
+     │                                  │      'manutenzione_programmata'              │
+     │                                  │                                              │
+     │                                  │  broadcast .stazione.status (libera=false)   │ ──►  cache.station.libera=false
+     │                                  │  broadcast .punto.hardware.status (xN)       │ ──►  cache.punto.stato_hw=
+     │                                  │                                              │      'manutenzione_programmata'
+     │                                  │                                              │      → markerColor() → grigio
+     │                                  │                                              │      → badge "Offline" sulle card
+     │                                  │                                              │
+     │                                  │  publish MQTT stazione/{mac}/manutenzione    │
+     │                                  │      {on: true}                              │
+     │                                  │     └──► simulatore ferma codice + heartbeat │
+     │  200 / 409                       │                                              │
+     │ ◄─────────────────────────────   │                                              │
+     │                                  │                                              │
+     │                                  │  heartbeat in volo arrivano → MqttWorker     │
+     │                                  │      vede in_manutenzione=true → scarta      │
+     │                                  │                                              │
+     │                                  │  HeartbeatChecker (ogni 60s) ignora i punti  │
+     │                                  │      'manutenzione_programmata' → nessun     │
+     │                                  │      cambio stato, nessun broadcast spurio   │
+```
+
+Per il toggle in uscita la sequenza è identica con valori invertiti
+(`in_manutenzione=false`, `stato_hardware='offline'`, MQTT `{on:false}`); il `StazioneStatusChanged`
+NON viene dispatchato in uscita (la stazione torna libera solo quando un punto torna
+davvero online via heartbeat, e a quel punto è HeartbeatChecker che dispatcha l'evento
+con `libera=true`).
 
 ### Effetto sulla UI
 
-- Tabella admin `stazioni`: badge giallo "manutenzione".
-- Mappa pubblica: stazione offline finché manutenzione attiva.
+- **Mappa pubblica** (React + Blade): pallino grigio in tempo reale su tutti i
+  dispositivi connessi a Reverb.
+- **Pagina di dettaglio stazione**: tutte le prese mostrano badge "Offline", nessun
+  bottone "Scegli".
+- **Tabella admin `stazioni`**: badge giallo "manutenzione" (il flag `in_manutenzione`
+  arriva al frontend al prossimo refetch della lista, oppure dopo refresh).
+- **Tentativo di verifica codice durante manutenzione**: il simulatore non genera più
+  codici (loop fermo), quindi il codice in Redis scade entro 60s e tutti i tentativi
+  successivi falliscono con `422 Codice non valido o scaduto`.
 
 ---
 
@@ -750,7 +924,163 @@ Entrambi convergono in [`SessioneService::termina($idSessione, $kwh)`](backend/s
 
 ---
 
-## 8. Gamification
+## 8. Heartbeat e rilevamento offline
+
+### Concetto
+
+Le colonnine inviano periodicamente un *heartbeat* per dimostrare di essere vive. Se il
+backend smette di riceverne per un certo tempo, marca i punti offline. Quando ricominciano,
+li rimarca online. Questo è il meccanismo che fa diventare grigio il pallino sulla mappa
+quando una colonnina si scollega davvero (cavo Ethernet staccato, alimentazione tolta,
+crash hardware) — senza richiedere alcuna azione manuale dell'admin.
+
+Il ciclo coinvolge tre attori:
+- **Simulatore / colonnina reale** che pubblica gli heartbeat su MQTT.
+- **`MqttWorker`** che riceve l'heartbeat e aggiorna `data_ultimo_heartbeat` su DB.
+- **`HeartbeatChecker`** (worker dedicato in container separato) che ogni 60s controlla i
+  timestamp e decide chi è online/offline.
+
+### Step 1 — Pubblicazione (simulatore)
+
+[`Punto._loop_heartbeat`](simulatore/stazione.py): ogni 60s ogni punto pubblica:
+
+- Topic: `stazione/{mac}/{id_punto}/heartbeat`
+- QoS: 1, `retain: true` (il broker tiene l'ultimo heartbeat anche se nessuno è
+  sottoscritto in quel momento — vedi Parte I, sezione B)
+- Payload: `{ "stato": "ok", "ts": 1716624000 }` (timestamp Unix in secondi)
+
+Il loop si ferma se la stazione riceve il comando `manutenzione {on: true}` (vedi flusso 3),
+o se viene terminata l'istanza Python.
+
+### Step 2 — Ricezione (MqttWorker)
+
+[`MqttWorker::gestisciHeartbeat`](backend/src/app/Console/Commands/MqttWorker.php):
+
+1. **Guard manutenzione**: legge `stazioni.in_manutenzione` per quel MAC. Se `true`,
+   logga "Heartbeat ignorato" e **scarta il messaggio** senza scrivere nulla. Questo
+   evita che un heartbeat in volo, arrivato tra il publish MQTT del comando manutenzione
+   e il momento in cui il simulatore lo elabora, possa "rinfrescare" il timestamp e
+   confondere HeartbeatChecker.
+2. Estrae `ts` dal payload se presente e numerico, altrimenti `now()`.
+3. UPDATE `punti_ricarica.data_ultimo_heartbeat = $ts` per quel `(id_stazione, id_punto)`.
+4. UPDATE `stazioni.data_ultimo_heartbeat = $ts` (a livello stazione, ridondante ma
+   comodo per query rapide tipo "qual è stata l'ultima volta che ho sentito la
+   colonnina X?" senza dover joinare i punti).
+
+**Importante**: questo step **non cambia mai `stato_hardware`**. Aggiorna solo il
+timestamp. Il passaggio online/offline è demandato a HeartbeatChecker, che ha
+una vista globale.
+
+### Step 3 — Controllo periodico (HeartbeatChecker)
+
+Container dedicato `green_heartbeat_checker` che esegue il comando Artisan
+`app:heartbeat-checker` (vedi [`HeartbeatChecker`](backend/src/app/Console/Commands/HeartbeatChecker.php)).
+Loop infinito: `controlloUnGiro()` ogni `INTERVALLO_CHECK_SEC` (60s).
+
+Per ogni stazione (eager load `puntiRicarica`):
+
+Per ogni punto, calcola `heartbeatScaduto`:
+```php
+$heartbeatScaduto = $punto->data_ultimo_heartbeat === null
+    || $punto->data_ultimo_heartbeat < now()->subSeconds(120);
+```
+La soglia è **2 minuti = 2 heartbeat persi consecutivi**, abbastanza tollerante per non
+scattare al primo singhiozzo di rete ma abbastanza reattivo per accorgersi di un'offline
+reale entro 3 minuti.
+
+Quattro casi possibili — il codice gestisce esplicitamente solo due:
+
+| `stato_hardware` | `heartbeatScaduto` | Azione |
+|---|---|---|
+| `'online'` | `true` | UPDATE → `'offline'` + broadcast `.punto.hardware.status` |
+| `'offline'` | `false` | UPDATE → `'online'` + broadcast `.punto.hardware.status` |
+| `'manutenzione_programmata'` | qualsiasi | **ignorato** (skip totale) |
+| `'guasto'` | qualsiasi | **ignorato** (riservato a uso futuro, non scritto da nessuno oggi) |
+
+Il "skip" sui due stati speciali è implicito: i due `if` controllano stringhe esatte
+(`=== 'online'` e `=== 'offline'`), quindi tutto il resto cade fuori da entrambi.
+
+### Step 4 — Broadcast del cambio stato
+
+Se il giro ha cambiato lo stato di almeno un punto della stazione:
+
+**a) Broadcast `PuntoHardwareStatusChanged` per ogni punto cambiato** (dispatchato dentro
+il ciclo, una alla volta):
+- Canale: `mappa`
+- Evento: `.punto.hardware.status`
+- Payload: `{ id_punto, stato_hardware, id_stazione }`
+- Effetto identico a quello descritto nel flusso 3: la cache locale nei browser viene
+  aggiornata, `markerColor` ricalcola, il pallino sulla mappa cambia colore.
+
+**b) Ricalcolo aggregato della stazione** (`aggiornaStatoStazione`):
+```php
+$haUnPuntoDisponibile = Punti_ricarica::where('id_stazione', $id)
+    ->where('libera', true)
+    ->whereNotIn('stato_hardware', ['guasto', 'offline', 'manutenzione_programmata'])
+    ->exists();
+```
+Se questo valore differisce dal vecchio `stazioni.libera`, UPDATE + broadcast
+`StazioneStatusChanged` (`.stazione.status`, payload `{ id_stazione, libera }`).
+
+Notare il `whereNotIn` che esclude `manutenzione_programmata`: garantisce che, finché
+la stazione è in manutenzione, non viene mai conteggiata come libera anche se i flag
+`punti_ricarica.libera = 1` sono rimasti (sì, restano: la manutenzione tocca solo
+`stato_hardware`, non `libera`).
+
+### Schema riassuntivo
+
+```
+   [simulatore]                  [broker MQTT]                  [MqttWorker]                  [DB]                  [HeartbeatChecker]                 [browser]
+       │  publish heartbeat ts=T     │                                │                          │                          │                                │
+       │ ──────────────────────────► │  ◄── subscribe stazione/#      │                          │                          │                                │
+       │                             │ ─────────────────────────────► │  in_manutenzione?        │                          │                                │
+       │                             │                                │ ────────────────────────►│                          │                                │
+       │                             │                                │  no → UPDATE             │                          │                                │
+       │                             │                                │      data_ultimo_heartbeat = T                      │                                │
+       │                             │                                │                          │                          │                                │
+       │                             │                                │                          │  (60s loop)              │                                │
+       │                             │                                │                          │ ◄── SELECT stazioni      │                                │
+       │                             │                                │                          │      with puntiRicarica  │                                │
+       │                             │                                │                          │                          │                                │
+       │  (... silenzio per 2 min ...)                                │                          │                          │                                │
+       │                             │                                │                          │  punto.heartbeat < now-120s                              │
+       │                             │                                │                          │  → UPDATE stato='offline'│                                │
+       │                             │                                │                          │ ─────────────────────────│  broadcast .punto.hardware.status ──►  cache.punto.stato_hw='offline'
+       │                             │                                │                          │                          │                                │  → markerColor() → grigio
+       │                             │                                │                          │  ricalcolo libera        │                                │
+       │                             │                                │                          │  diversa → UPDATE +      │                                │
+       │                             │                                │                          │  broadcast .stazione.status                              │
+```
+
+### Interazione con la manutenzione
+
+I due flussi convivono per evitare il "lampeggio" descritto nel flusso 3:
+
+| Scenario | Stato punti | HeartbeatChecker | Risultato |
+|---|---|---|---|
+| Stazione viva, heartbeat regolari | `'online'` | `heartbeatScaduto=false`, già online → no-op | Pallino verde/rosso |
+| Stazione spenta da 2+ min | `'online'` | `heartbeatScaduto=true` → `'offline'` + broadcast | Pallino grigio |
+| Stazione tornata viva | `'offline'` | `heartbeatScaduto=false` → `'online'` + broadcast | Pallino verde/rosso |
+| Stazione messa in manutenzione | `'manutenzione_programmata'` | skip totale | Pallino grigio (settato dal toggle, non da qui) |
+| Stazione tolta dalla manutenzione | `'offline'` | `heartbeatScaduto=true` finché niente heartbeat | Resta grigio finché simulatore riparte |
+| Heartbeat in arrivo durante manutenzione | `'manutenzione_programmata'` | MqttWorker scarta l'heartbeat (Step 2) | Stato congelato, niente lampeggio |
+
+### Costi e scalabilità
+
+- Query per giro: 1 SELECT con eager load `puntiRicarica`, poi 0..N UPDATE.
+- Frequenza: 1 giro / 60s.
+- Latenza max prima di rilevare un offline: 60s (check) + 120s (soglia) = **3 minuti**.
+- Per ridurre latenza basta abbassare `SOGLIA_OFFLINE_SEC` e/o `INTERVALLO_CHECK_SEC`,
+  a costo di più sensibilità ai jitter di rete.
+
+Per scalare oltre qualche centinaio di stazioni conviene sostituire il loop PHP con
+un'unica `UPDATE ... WHERE data_ultimo_heartbeat < ?` bulk + un secondo UPDATE per il
+contrario, eliminando il ciclo applicativo. Per il volume scolastico attuale la
+versione iterativa è sufficiente e più leggibile.
+
+---
+
+## 9. Gamification
 
 ### Concetto
 
@@ -786,9 +1116,387 @@ impedisce duplicati.
 
 ---
 
+## 10. Login e registrazione utente
+
+### Concetto
+
+L'utente accede all'app per consultare la mappa, avviare ricariche, vedere il profilo
+gamification e (se admin) entrare nel pannello. Esistono **due frontend** con due
+strategie di autenticazione diverse che convivono sullo stesso modello `Utenti` e sulla
+stessa tabella `personal_access_tokens` di Sanctum:
+
+- **Blade (server-rendered)**: cookie di sessione PHP + token Sanctum salvato nella
+  sessione lato server. Le pagine sono `/login`, `/register`, `/map`, ecc.
+- **React (SPA via Vite)**: solo token Sanctum, salvato in `localStorage` del browser e
+  iniettato manualmente nell'header `Authorization: Bearer ...` da `apiClient`. Le
+  pagine sono `/react/login`, `/react/register`, `/react/map`, ecc.
+
+Entrambe convergono su `personal_access_tokens` per la validazione delle richieste
+API protette da `auth:sanctum`. Significato pratico: lo **stesso utente** può essere
+loggato simultaneamente da Blade e React e i due "ambienti" non si pestano i piedi,
+ma il logout di uno revoca i token e disconnette anche l'altro (vedi sotto).
+
+### Tabelle e colonne coinvolte
+
+**`utenti`** ([migration 0001](backend/src/database/migrations/0001_creazione_struttura_iniziale%20.php)):
+- `id_utente` (UUID, PK) — auto-generato dal trigger
+  [`trg_set_utenti_uuid_ins`](backend/src/database/migrations/0003_creazione_trigger_utenti.php#L14)
+  se l'INSERT non lo passa esplicitamente.
+- `email` (unique), `password` (hash bcrypt via `Hash::make`), `cellulare`, `nome`,
+  `cognome`.
+- `tipo_account` enum `completo|badge_anonimo|ospite` (default `completo` per
+  registrazioni web/React).
+- `attivo` boolean (default `true`) — l'admin può disattivare un utente da pannello.
+- `ruolo` enum `utente|admin` (aggiunto in [migration 0015](backend/src/database/migrations/0015_aggiunta_ruolo_utenti.php)),
+  default `utente`. Solo `admin` accede a `/admin/*` e `/api/admin/*`.
+- `login_tentativi` (unsigned tinyint) + `login_bloccato_fino` (timestamp nullable) —
+  aggiunti in [migration 0016](backend/src/database/migrations/0016_aggiunta_lockout_login_utenti.php)
+  per il throttle/lockout.
+
+**`personal_access_tokens`** ([migration 0004](backend/src/database/migrations/0004_creazione_personal_access_tokens_table.php)):
+- Versione custom della tabella Sanctum: usa `uuidMorphs('tokenable')` invece di
+  `morphs()` perché il `tokenable_id` è l'UUID di `utenti`, non un BIGINT.
+- `token` (varchar 64 unique) — **hash SHA-256 del token**, non il token in chiaro.
+  Il valore in chiaro esce una sola volta da `createToken()->plainTextToken` e va
+  consegnato subito al client; al ritorno il backend confronta `hash('sha256', $plain)`
+  col valore in DB.
+- `name` — etichetta libera (`'auth_token'` per /api/login, `'web-access'` per il flow
+  Blade). Permette di distinguere i token nel DB ma non ha effetti funzionali.
+- `last_used_at` — aggiornato da Sanctum a ogni chiamata autenticata. Utile per audit.
+
+### Flusso A — Registrazione via API (React)
+
+**Endpoint**: `POST /api/register` (pubblico, [api.php:94](backend/src/routes/api.php#L94))
+→ [`RegisterController::register`](backend/src/app/Http/Controllers/Api/RegisterController.php).
+
+**Body JSON**:
+```json
+{
+  "nome": "Mario", "cognome": "Rossi",
+  "email": "mario@example.com", "cellulare": "3331234567",
+  "password": "almeno8car", "password_confirmation": "almeno8car"
+}
+```
+
+**Step 1 — Validazione**:
+- `email`: required, formato email, max 255, **unique** su `utenti.email` (con messaggio
+  custom "Questa email è già registrata.").
+- `password`: required, **confirmed** (richiede `password_confirmation` identica),
+  min 8.
+- `nome`/`cognome`: required, string, max 100.
+- `cellulare`: nullable, max 20.
+
+Se fallisce, Laravel ritorna `422` con `{ errors: { campo: [msg, ...] } }` automaticamente.
+
+**Step 2 — Creazione utente**:
+```php
+Utenti::create([
+    'id_utente'    => Str::uuid()->toString(),
+    'tipo_account' => 'completo',
+    'password'     => Hash::make($request->password),
+    'attivo'       => 1,
+    // + nome, cognome, email, cellulare dal body
+]);
+```
+- L'UUID viene generato lato applicazione anche se il trigger DB sarebbe in grado di
+  farlo: passarlo esplicitamente evita un `RETURNING` o un round-trip per leggerlo.
+- `Hash::make` usa bcrypt con cost 12 (default Laravel) → l'hash include il salt al
+  suo interno, niente colonna separata.
+- `ruolo` non è passato → default DB `'utente'`. Per creare admin si fa manualmente da
+  CLI/seeder, non c'è endpoint di registrazione admin.
+
+**Step 3 — Emissione token**:
+```php
+$token = $utente->createToken('auth_token')->plainTextToken;
+```
+- Sanctum genera 40 byte random, prende SHA-256, inserisce la riga in
+  `personal_access_tokens` con `tokenable_type='App\\Models\\Utenti'`, `tokenable_id=<uuid>`,
+  `token=<sha256 hash>`, `abilities='["*"]'`.
+- `plainTextToken` è la concatenazione `{id}|{plain}` (l'ID serve a Sanctum per
+  cercare la riga in O(1) invece che fare `WHERE token = hash($plain)` sull'intera
+  tabella).
+
+**Step 4 — Risposta `201 Created`**:
+```json
+{
+  "access_token": "5|abc123...xyz",
+  "token_type": "Bearer",
+  "user": { "id_utente": "...", "nome": "...", "email": "...", "tipo": "completo", "ruolo": "utente" }
+}
+```
+
+Il frontend React (vedi `frontend/src/api/client.js`) salva `access_token` in
+`localStorage` e lo inietta come `Authorization: Bearer ...` su ogni richiesta API
+successiva tramite un interceptor axios.
+
+### Flusso B — Registrazione via Blade
+
+**Endpoint**: `POST /register` (web, [web.php:20](backend/src/routes/web.php#L20)) →
+[`WebAuthController::register`](backend/src/app/Http/Controllers/WebAuthController.php#L173).
+
+Differenze rispetto a A:
+
+1. Stesse validazioni, stesso `Utenti::create(...)`.
+2. **Auto-login post-registrazione**: `Auth::login($utente)` + `$request->session()->regenerate()`
+   (rigenera l'ID di sessione per prevenire session fixation).
+3. **Pulisce token vecchi** prima di crearne uno nuovo: `$utente->tokens()->delete()`.
+   Questo serve perché lo stesso utente potrebbe aver già fatto registrazione+login
+   da React e avere un token vivo; il design Blade qui assume "un solo token attivo
+   per utente" (semplifica il /logout).
+4. Crea token con nome `'web-access'` e lo salva nella **sessione PHP**:
+   ```php
+   session(['api_token' => $token]);
+   ```
+   Questo è il trucco chiave per Blade: la pagina HTML server-rendered non può
+   memorizzare il token come fa una SPA, quindi lo tiene la sessione lato server. Le
+   view che hanno bisogno di chiamare API (es. `/map` per fare fetch su `/api/stations`)
+   ricevono il token come variabile Blade da `web.php` e lo iniettano nel JS della
+   pagina come `window.API_TOKEN` o simile.
+5. `redirect()->intended('map')` — Laravel ricorda l'ultima pagina che richiedeva auth
+   e ti ci porta dopo il login; default `/map`.
+
+### Flusso C — Login via API (React)
+
+**Endpoint**: `POST /api/login` (pubblico, [api.php:32](backend/src/routes/api.php#L32))
+→ [`AuthController::login`](backend/src/app/Http/Controllers/Api/AuthController.php).
+
+**Body JSON**: `{ "email": "...", "password": "..." }`.
+
+**Step 1 — Validazione base**:
+- `email`: required, email format.
+- `password`: required.
+
+**Step 2 — Lookup utente**:
+```php
+$user = Utenti::where('email', $request->email)->first();
+```
+
+**Step 3 — Check lockout** (prima di toccare la password):
+```php
+if ($user && $user->login_bloccato_fino && Carbon::now()->lt($user->login_bloccato_fino)) {
+    return response()->json([...], 423);
+}
+```
+- Codice HTTP **423 Locked**.
+- Il check va fatto PRIMA della verifica password: altrimenti un attaccante con lockout
+  attivo riceverebbe "credenziali errate" e capirebbe che la password che stava provando
+  non è valida (oracolo).
+- Il messaggio include i minuti rimanenti, calcolati con `ceil(diffInMinutes(..., false))`
+  + `abs` per gestire correttamente lo sign del Carbon diff.
+
+**Step 4 — Verifica password**:
+```php
+if (! $user || ! Hash::check($request->password, $user->password)) {
+    if ($user) {
+        $user->login_tentativi += 1;
+        if ($user->login_tentativi >= 5) {
+            $user->login_bloccato_fino = Carbon::now()->addMinutes(15);
+            $user->login_tentativi     = 0;
+            $user->save();
+            return response()->json([...], 423);
+        }
+        $user->save();
+        return response()->json([..., 'tentativi_rimasti' => 5 - $user->login_tentativi], 401);
+    }
+    return response()->json([..., 'message' => 'Credenziali non valide.'], 401);
+}
+```
+
+Punti chiave:
+- **`Hash::check`** confronta in tempo costante per non rivelare info via timing.
+- Il contatore `login_tentativi` viene incrementato **solo se l'utente esiste**. Se
+  incrementassimo anche per email inesistenti, un attaccante non avrebbe modo di
+  scoprire account validi ma noi paghiamo INSERT/UPDATE inutili e (più grave) il
+  messaggio generico "credenziali non valide" è sempre lo stesso a prescindere → un
+  attaccante non capirebbe se l'email esiste. Non incrementando, manteniamo il
+  comportamento simmetrico e non-enumerabile.
+- Soglia 5 tentativi falliti → blocco 15 minuti. Al blocco, contatore azzerato (così
+  al prossimo ciclo riparte pulito).
+- Risposta `401 Unauthorized` con `tentativi_rimasti` per UX.
+
+**Step 5 — Check account attivo**:
+```php
+if (! $user->attivo) {
+    return response()->json([...], 403);
+}
+```
+Account disattivato dall'admin → `403 Forbidden`, senza emettere token.
+
+**Step 6 — Login OK, reset contatori, token**:
+```php
+$user->login_tentativi     = 0;
+$user->login_bloccato_fino = null;
+$user->save();
+$token = $user->createToken('auth_token')->plainTextToken;
+```
+
+Notare: il flusso API **non** cancella i token esistenti (a differenza del Blade) →
+un utente può avere più sessioni API contemporaneamente (es. browser + Postman + mobile
+in futuro). Ogni `createToken` crea una nuova riga.
+
+**Step 7 — Risposta `200 OK`**: stesso shape della registrazione (`access_token`,
+`token_type`, `user`).
+
+### Flusso D — Login via Blade
+
+**Endpoint**: `POST /login` ([web.php:17](backend/src/routes/web.php#L17)) →
+[`WebAuthController::login`](backend/src/app/Http/Controllers/WebAuthController.php#L34).
+
+Stesse regole di lockout/throttle (`MAX_TENTATIVI = 5`, `BLOCCO_MINUTI = 15`) ma con due
+differenze sostanziali rispetto all'API:
+
+1. **Auth classica via `Auth::attempt($credentials)`**: usa il guard `web` (sessione +
+   cookie). Se successo, `$request->session()->regenerate()` rigenera l'ID di sessione
+   (anti session fixation).
+2. **Single-token policy**: `$user->tokens()->delete()` prima di `createToken('web-access')`.
+   Solo l'ultimo token Blade è valido. Conseguenza: se l'utente è loggato anche da
+   React e poi fa login da Blade, il token React viene revocato → React riceverà 401
+   sulla prossima chiamata e dovrà rifare login.
+
+Gli errori non vengono ritornati come JSON: usa `ValidationException::withMessages([...])`
+che Laravel converte in redirect alla pagina di login con i messaggi flashati in sessione
+(letti dal template Blade come `@error('email') {{ $message }} @enderror`).
+
+Dopo successo: token salvato in `session(['api_token' => $token])` e
+`redirect()->intended('map')`.
+
+### Flusso E — Logout
+
+**API React** ([AuthController::logout](backend/src/app/Http/Controllers/Api/AuthController.php#L98)):
+- Rotta `POST /api/logout` sotto `auth:sanctum`.
+- `$request->user()->currentAccessToken()->delete()` cancella **solo il token corrente**
+  (non gli altri eventuali token dello stesso utente).
+- Risposta JSON `{ message: ... }`. Il frontend rimuove `access_token` dal localStorage.
+
+**Blade** ([WebAuthController::logout](backend/src/app/Http/Controllers/WebAuthController.php#L147)):
+- Rotta `POST /logout` (web).
+- `$user->tokens()->delete()` cancella **tutti** i token (coerente con la single-token
+  policy del login Blade).
+- `Auth::logout()`, `session()->invalidate()`, `session()->regenerateToken()` per
+  azzerare completamente la sessione.
+- Redirect a `/login`.
+
+### Flusso F — Autenticazione di una richiesta successiva
+
+Per ogni richiesta a una rotta sotto `auth:sanctum` (es. `GET /api/stations`):
+
+1. Sanctum estrae il token dall'header `Authorization: Bearer {token}`.
+2. Splitta `{id}|{plain}` → cerca `personal_access_tokens` WHERE `id = {id}`.
+3. Confronta `hash_equals(hash('sha256', $plain), $row->token)`. Se diverso → 401.
+4. Se `expires_at IS NOT NULL AND expires_at < NOW()` → 401. (Oggi non scadono mai:
+   `createToken` non passa expiry).
+5. Aggiorna `last_used_at = NOW()` (Sanctum lo fa async via observer, non blocca la
+   risposta).
+6. Risolve `$request->user()` a `Utenti::find($row->tokenable_id)`.
+7. Procede col middleware successivo (es. `admin.api`) o col controller.
+
+**Middleware `admin.api`** ([AdminApiMiddleware](backend/src/app/Http/Middleware/AdminApiMiddleware.php)):
+```php
+if (! $request->user() || $request->user()->ruolo !== 'admin') {
+    return response()->json(['message' => '...'], 403);
+}
+```
+Banale: legge `ruolo` dall'utente già caricato da Sanctum. Restituisce JSON 403 per i
+client REST (a differenza di `AdminMiddleware` che fa redirect per il flusso web).
+
+### Flusso G — Autenticazione WebSocket (canali privati)
+
+Quando il browser sottoscrive un canale privato (es. `private-user.{id_utente}` per i
+kWh real-time), Echo fa una richiesta di autorizzazione che deve essere autenticata
+**come se fosse una normale chiamata API**. Le rotte sono:
+
+- **`/broadcasting/auth`** (web, middleware `web` → cookie sessione) — usata da Blade.
+- **`/api/broadcasting/auth`** (API, middleware `auth:sanctum`) — usata da React
+  (registrata in [api.php:24](backend/src/routes/api.php#L24)).
+
+React deve essere configurato per puntare a `/api/broadcasting/auth` invece del default
+`/broadcasting/auth`, altrimenti Echo tenta l'auth col cookie (che non esiste in
+contesto SPA) e fallisce con 401 → niente real-time. Vedi dettagli in Parte I, sezione C.
+
+L'handler dell'auth route ([`channels.php`](backend/src/routes/channels.php)) controlla
+che `$user->id_utente === $id_utente` per il canale `user.{id_utente}` (un utente può
+ascoltare solo i suoi eventi).
+
+### Schema riassuntivo
+
+```
+   [browser React]                  [Laravel]                  [DB]                  [Sanctum]
+        │  POST /api/register          │                          │                          │
+        │ ───────────────────────────► │                          │                          │
+        │                              │  validate (email unique) │                          │
+        │                              │  Utenti::create(uuid,    │                          │
+        │                              │      hash bcrypt)        │                          │
+        │                              │ ───────────────────────► │                          │
+        │                              │                          │  trigger UUID se mancante│
+        │                              │  createToken('auth')     │ ─────────────────────────│ ──► INSERT personal_access_tokens
+        │  201 { access_token, user }  │                          │                          │
+        │ ◄─────────────────────────── │                          │                          │
+        │  localStorage.set(token)     │                          │                          │
+        │                              │                          │                          │
+        │  GET /api/stations           │                          │                          │
+        │      Authorization: Bearer.. │                          │                          │
+        │ ───────────────────────────► │  middleware auth:sanctum │                          │
+        │                              │ ──────────────────────────────────────────────────► │  WHERE id=X
+        │                              │                          │                          │  hash_equals(sha256, plain)
+        │                              │                          │                          │  UPDATE last_used_at
+        │                              │  $request->user()=Utenti(uuid)                      │
+        │                              │  controller logic                                   │
+        │  200 { stations: [...] }     │                          │                          │
+        │ ◄─────────────────────────── │                          │                          │
+
+   [browser Blade]
+        │  POST /login (form HTML)     │                          │                          │
+        │ ───────────────────────────► │  Auth::attempt           │                          │
+        │                              │  session->regenerate()   │                          │
+        │                              │  tokens()->delete()      │ ──► DELETE all tokens   │
+        │                              │  createToken('web')      │ ──► INSERT new token    │
+        │                              │  session(['api_token'=>])│                          │
+        │  302 → /map                  │                          │                          │
+        │ ◄─────────────────────────── │  set cookie laravel_session                         │
+        │                              │                          │                          │
+        │  GET /map                    │                          │                          │
+        │      Cookie: laravel_session │                          │                          │
+        │ ───────────────────────────► │  middleware web (auth)   │                          │
+        │                              │  pass api_token to view  │                          │
+        │  HTML con window.API_TOKEN=..│                          │                          │
+        │ ◄─────────────────────────── │                          │                          │
+        │                              │                          │                          │
+        │  fetch /api/stations         │                          │                          │
+        │      Authorization: Bearer.. │  (same as React above)   │                          │
+```
+
+### Edge case e considerazioni
+
+- **Account disattivato dopo login**: il check `attivo` avviene solo al momento del
+  login. Se l'admin disattiva un utente mentre questo è già loggato, l'utente
+  **continua a poter usare l'app** finché il token resta vivo. Per disconnetterlo
+  subito, l'admin può fare `resetPassword` (che invalida tutti i token) — vedi
+  `AdminApiController::resetPassword`.
+- **Lockout durante il blocco**: tentativi di login a un account bloccato non
+  resettano `login_bloccato_fino` (il check è il primo), quindi un attaccante non può
+  prolungare un blocco con altri tentativi falliti — il timer scorre comunque.
+- **Email enumeration**: il messaggio generico "Credenziali non valide" è identico
+  per email inesistente e password sbagliata. L'unico segnale che differisce è
+  `tentativi_rimasti` (presente solo se l'utente esiste), che potrebbe essere usato
+  per enumerare. Trade-off accettato per UX migliore.
+- **Token non scadono**: oggi `createToken()` non setta `expires_at`. In produzione
+  conviene impostare una scadenza (`createToken('name', ['*'], now()->addDays(30))`)
+  per ridurre il rischio di token rubati validi all'infinito.
+- **Niente rate limit su `/api/login`**: il lockout per-utente protegge il singolo
+  account ma non protegge dal flood (es. attaccante che tenta password diverse su
+  account diversi). Aggiungere `->middleware('throttle:10,1')` sulla rotta sarebbe
+  una protezione complementare.
+- **Niente verifica email**: l'utente è subito attivo dopo `register`. Per produzione
+  conviene un flusso di conferma (Laravel ha `MustVerifyEmail` integrato).
+- **Niente reset password self-service**: solo l'admin può resettare via
+  `AdminApiController::resetPassword`. Per produzione si aggiunge il flusso classico
+  "password dimenticata" via email.
+
+---
+
 # Parte III — Reference
 
-## 9. API REST
+## 11. API REST
 
 Definite in [`routes/api.php`](backend/src/routes/api.php).
 
@@ -835,7 +1543,7 @@ Definite in [`routes/api.php`](backend/src/routes/api.php).
 
 ---
 
-## 10. Middleware
+## 12. Middleware
 
 | Alias | Classe | Cosa fa |
 |---|---|---|
@@ -845,7 +1553,7 @@ Definite in [`routes/api.php`](backend/src/routes/api.php).
 
 ---
 
-## 11. Topic MQTT
+## 13. Topic MQTT
 
 ### Station-wide (3 livelli)
 
@@ -870,7 +1578,7 @@ Il [`MqttWorker`](backend/src/app/Console/Commands/MqttWorker.php) usa una sola 
 
 ---
 
-## 12. WebSocket
+## 14. WebSocket
 
 ### Canali pubblici
 
@@ -918,7 +1626,7 @@ Tutti `ShouldBroadcastNow`.
 
 ---
 
-## 13. Schema DB completo
+## 15. Schema DB completo
 
 Vedi le migration ([`backend/src/database/migrations/`](backend/src/database/migrations/)).
 

@@ -459,7 +459,7 @@ Il backend ha **3 contesti di autenticazione** (riassunto; dettaglio nel
 |--------------|--------------------------------------------|------------------------------------|
 | Browser Blade | Form `/login` → cookie di sessione         | `Cookie: green_school_session=…`   |
 | React / Postman / Python | `POST /api/login` → token Sanctum | `Authorization: Bearer <token>`    |
-| Colonnina IoT | Password globale + MAC, una sola volta     | body `password_registrazione=…`    |
+| Colonnina IoT | Password globale + MAC, una sola volta     | body `mac=… password=… numero_punti=…` |
 
 Per Postman ti serve solo il **Bearer token Sanctum**:
 
@@ -488,8 +488,11 @@ Per Postman ti serve solo il **Bearer token Sanctum**:
 > `personal_access_tokens`. Se rifai login senza logout, ottieni un secondo token e
 > il primo resta attivo.
 
-**Lockout brute force**: dopo 5 login falliti dello stesso utente, il backend risponde
-**HTTP 429** con `Retry-After: <secondi>` per 15 minuti. Se sei rimasto bloccato in
+**Lockout brute force**: dopo 5 login falliti consecutivi dello stesso utente, il
+backend risponde **HTTP 423 Locked** per 15 minuti. Il messaggio nel body include i
+minuti residui (calcolati lato server, non c'è header `Retry-After`). Nota:
+il contatore tentativi viene incrementato solo se l'email esiste — login con email
+inesistente non fa scattare il lockout (anti enumeration). Se sei rimasto bloccato in
 test, sbloccati via Tinker:
 ```bash
 docker exec -it green_app php artisan tinker
