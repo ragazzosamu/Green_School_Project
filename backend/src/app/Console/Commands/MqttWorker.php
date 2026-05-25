@@ -133,6 +133,18 @@ class MqttWorker extends Command
 
     private function gestisciHeartbeat(string $idStazione, string $idPunto, array $data): void
     {
+        // Se la stazione è in manutenzione scarto l'heartbeat: senza questo
+        // guard un messaggio in volo potrebbe rinfrescare data_ultimo_heartbeat
+        // e confondere HeartbeatChecker quando la manutenzione termina.
+        $inManutenzione = DB::table('stazioni')
+            ->where('id_stazione', $idStazione)
+            ->value('in_manutenzione');
+
+        if ($inManutenzione) {
+            $this->comment("Heartbeat da $idStazione/$idPunto ignorato: stazione in manutenzione.");
+            return;
+        }
+
         $ts = isset($data['ts']) && is_numeric($data['ts'])
             ? Carbon::createFromTimestamp((int) $data['ts'])
             : now();
@@ -145,8 +157,6 @@ class MqttWorker extends Command
         DB::table('stazioni')
             ->where('id_stazione', $idStazione)
             ->update(['data_ultimo_heartbeat' => $ts]);
-
-
     }
 
     private function gestisciEvento(string $idStazione, string $idPunto, array $data, string $topic): void

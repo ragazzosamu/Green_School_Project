@@ -353,8 +353,14 @@ class AdminApiController extends Controller
         DB::table('stazioni')->where('id_stazione', $id)->update(['in_manutenzione' => $nuovoStato]);
 
         if ($nuovoStato) {
-            DB::table('punti_ricarica')->where('id_stazione', $id)->update(['stato_hardware' => 'offline']);
+            // Entrata in manutenzione: stato dedicato, HeartbeatChecker lo ignora
+            // e gli heartbeat in volo non possono riportare i punti online.
+            DB::table('punti_ricarica')->where('id_stazione', $id)->update(['stato_hardware' => 'manutenzione_programmata']);
             \App\Events\StazioneStatusChanged::dispatch($id, false);
+        } else {
+            // Uscita dalla manutenzione: rimetto i punti offline, il prossimo
+            // heartbeat valido li riporterà online via HeartbeatChecker.
+            DB::table('punti_ricarica')->where('id_stazione', $id)->update(['stato_hardware' => 'offline']);
         }
 
         try {
