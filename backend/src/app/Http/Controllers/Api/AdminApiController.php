@@ -352,15 +352,25 @@ class AdminApiController extends Controller
 
         DB::table('stazioni')->where('id_stazione', $id)->update(['in_manutenzione' => $nuovoStato]);
 
+        $nuovoStatoHw = $nuovoStato ? 'manutenzione_programmata' : 'offline';
+
         if ($nuovoStato) {
             // Entrata in manutenzione: stato dedicato, HeartbeatChecker lo ignora
             // e gli heartbeat in volo non possono riportare i punti online.
-            DB::table('punti_ricarica')->where('id_stazione', $id)->update(['stato_hardware' => 'manutenzione_programmata']);
+            DB::table('punti_ricarica')->where('id_stazione', $id)->update(['stato_hardware' => $nuovoStatoHw]);
             \App\Events\StazioneStatusChanged::dispatch($id, false);
         } else {
             // Uscita dalla manutenzione: rimetto i punti offline, il prossimo
             // heartbeat valido li riporterà online via HeartbeatChecker.
-            DB::table('punti_ricarica')->where('id_stazione', $id)->update(['stato_hardware' => 'offline']);
+            DB::table('punti_ricarica')->where('id_stazione', $id)->update(['stato_hardware' => $nuovoStatoHw]);
+        }
+
+        // Broadcast per-punto: senza questo la mappa (markerColor) e le pagine
+        // di dettaglio non sanno che lo stato hardware e' cambiato e restano
+        // visivamente ferme finche' l'utente non ricarica.
+        $puntiIds = DB::table('punti_ricarica')->where('id_stazione', $id)->pluck('id_punto');
+        foreach ($puntiIds as $idPunto) {
+            \App\Events\PuntoHardwareStatusChanged::dispatch($idPunto, $nuovoStatoHw, $id);
         }
 
         try {
