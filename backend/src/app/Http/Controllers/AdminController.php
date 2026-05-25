@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Events\PuntoHardwareStatusChanged;
 use App\Events\StazioneStatusChanged;
 use App\Models\Utenti;
 use App\Services\MqttService;
@@ -416,19 +417,26 @@ class AdminController extends Controller
             'in_manutenzione' => $nuovoStato,
         ]);
 
-        // Se entriamo in manutenzione, marchiamo tutti i punti come offline
-        // a DB cosi' la mappa lo riflette immediatamente (senza aspettare il
-        // prossimo heartbeat). Quando usciamo dalla manutenzione lasciamo i
-        // punti offline: torneranno online al primo heartbeat MQTT.
-        if ($nuovoStato) {
-            DB::table('punti_ricarica')
-                ->where('id_stazione', $id)
-                ->update(['stato_hardware' => 'offline']);
+        // In manutenzione: stato dedicato 'manutenzione_programmata' che
+        // HeartbeatChecker ignora (altrimenti vedrebbe stato='offline' +
+        // heartbeat fresco e rimetterebbe online i punti, causando il
+        // lampeggio). Uscendo dalla manutenzione i punti tornano 'offline'
+        // e il prossimo heartbeat MQTT li riporta 'online' via HeartbeatChecker.
+        $nuovoStatoHw = $nuovoStato ? 'manutenzione_programmata' : 'offline';
+        DB::table('punti_ricarica')
+            ->where('id_stazione', $id)
+            ->update(['stato_hardware' => $nuovoStatoHw]);
 
-            // Broadcast WebSocket: la stazione diventa indisponibile (libera=false).
-            // Mappa e viste in ascolto su 'mappa' / 'stazione.{mac}' la marcano
-            // offline subito, senza aspettare il prossimo heartbeat.
+        if ($nuovoStato) {
             StazioneStatusChanged::dispatch($id, false);
+        }
+
+        // Broadcast per-punto: senza questo la mappa (markerColor legge
+        // dai punti, non dall'aggregato) e le pagine di dettaglio non si
+        // aggiornano in tempo reale sugli altri dispositivi.
+        $puntiIds = DB::table('punti_ricarica')->where('id_stazione', $id)->pluck('id_punto');
+        foreach ($puntiIds as $idPunto) {
+            PuntoHardwareStatusChanged::dispatch($idPunto, $nuovoStatoHw, $id);
         }
 
         try {
