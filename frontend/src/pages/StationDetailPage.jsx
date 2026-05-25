@@ -1,9 +1,13 @@
 // Equivalente React di backend/src/resources/views/station-detail.blade.php
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
+import Echo from 'laravel-echo';
+import Pusher from 'pusher-js';
 import NavBar from '../components/NavBar';
 import apiClient from '../api/client';
 import './StationDetailPage.css';
+
+window.Pusher = Pusher;
 
 function classeStato(punto) {
   if (punto.stato_hardware !== 'online') return 'stato-offline';
@@ -45,6 +49,75 @@ export default function StationDetailPage() {
   }, [id]);
 
   useEffect(() => { load(); }, [load]);
+
+  // ── Subscription Echo: aggiorna lo stato della stazione in tempo reale ──
+  // Stessa logica di useStationsEcho ma filtrata sul singolo id della pagina.
+  // Puramente additiva: non tocca load() ne lo stato iniziale.
+  const echoRef = useRef(null);
+  useEffect(() => {
+    if (!id) return;
+    try {
+      const key    = import.meta.env.VITE_REVERB_APP_KEY;
+      const host   = import.meta.env.VITE_REVERB_HOST   || window.location.hostname;
+      const scheme = import.meta.env.VITE_REVERB_SCHEME || window.location.protocol.replace(':', '');
+      const port   = Number(import.meta.env.VITE_REVERB_PORT) || Number(window.location.port) || 5173;
+      const isHttps = scheme === 'https';
+
+      if (!key) {
+        console.error('[Echo] VITE_REVERB_APP_KEY mancante. StationDetailPage non si aggiornera in tempo reale.');
+        return;
+      }
+
+      echoRef.current = new Echo({
+        broadcaster: 'reverb',
+        key,
+        wsHost: host,
+        wsPort: port,
+        wssPort: port,
+        forceTLS: isHttps,
+        enabledTransports: ['ws', 'wss'],
+      });
+
+      const channel = echoRef.current.channel('mappa');
+
+      channel.listen('.stazione.status', (e) => {
+        if (e.id_stazione !== id) return;
+        setStazione((prev) => (prev ? { ...prev, libera: e.libera } : prev));
+      });
+
+      channel.listen('.punto.status', (e) => {
+        if (e.id_stazione && e.id_stazione !== id) return;
+        setStazione((prev) => {
+          if (!prev) return prev;
+          const punti = (prev.punti_ricarica ?? []).map((p) =>
+            p.id_punto === e.id_punto ? { ...p, libera: e.libera ? 1 : 0 } : p,
+          );
+          return { ...prev, punti_ricarica: punti };
+        });
+      });
+
+      channel.listen('.punto.hardware.status', (e) => {
+        if (e.id_stazione && e.id_stazione !== id) return;
+        setStazione((prev) => {
+          if (!prev) return prev;
+          const punti = (prev.punti_ricarica ?? []).map((p) =>
+            p.id_punto === e.id_punto ? { ...p, stato_hardware: e.stato_hardware } : p,
+          );
+          return { ...prev, punti_ricarica: punti };
+        });
+      });
+    } catch (err) {
+      console.error('[Echo] Errore connessione StationDetailPage:', err);
+    }
+
+    return () => {
+      try {
+        echoRef.current?.leaveChannel('mappa');
+        echoRef.current?.disconnect();
+      } catch (_) { /* noop */ }
+      echoRef.current = null;
+    };
+  }, [id]);
 
   function apriCodice() {
     setCodice('');

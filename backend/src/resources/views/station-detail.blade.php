@@ -351,15 +351,15 @@
 
         <div class="station-chips">
             <div class="stat-chip">
-                <div class="stat-chip-val">{{ $stazione->puntiRicarica->count() }}</div>
+                <div class="stat-chip-val" data-chip="totale">{{ $stazione->puntiRicarica->count() }}</div>
                 <div class="stat-chip-label">Totale</div>
             </div>
             <div class="stat-chip">
-                <div class="stat-chip-val green">{{ $stazione->puntiRicarica->where('stato_hardware','online')->where('libera',1)->count() }}</div>
+                <div class="stat-chip-val green" data-chip="libere">{{ $stazione->puntiRicarica->where('stato_hardware','online')->where('libera',1)->count() }}</div>
                 <div class="stat-chip-label">Libere</div>
             </div>
             <div class="stat-chip">
-                <div class="stat-chip-val red">{{ $stazione->puntiRicarica->where('stato_hardware','online')->where('libera',0)->count() }}</div>
+                <div class="stat-chip-val red" data-chip="in-uso">{{ $stazione->puntiRicarica->where('stato_hardware','online')->where('libera',0)->count() }}</div>
                 <div class="stat-chip-label">In uso</div>
             </div>
         </div>
@@ -413,7 +413,7 @@
                     }
                 @endphp
 
-                <div class="presa-card {{ $cardClass }}">
+                <div class="presa-card {{ $cardClass }}" data-id-punto="{{ $punto->id_punto }}">
                     <div class="presa-info">
                         <div class="presa-name-row">
                             <span class="status-dot {{ $dotClass }}"></span>
@@ -488,5 +488,118 @@
             alert('Errore di rete: controlla la console.');
         }
     }
+</script>
+
+{{-- ── Subscription Echo: aggiorna lo stato delle prese in tempo reale ── --}}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pusher/8.3.0/pusher.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/laravel-echo@1.16.1/dist/echo.iife.js"></script>
+<script>
+(function () {
+    const ID_STAZIONE_CORRENTE = @json($stazione->id_stazione);
+
+    function selPresa(idPunto) {
+        return document.querySelector('.presa-card[data-id-punto="' + CSS.escape(idPunto) + '"]');
+    }
+
+    function statoLogico(card) {
+        // Ricava lo stato attuale (online/offline + libera) dalle classi gia' presenti.
+        const offline  = card.classList.contains('stato-offline');
+        const libera   = card.classList.contains('stato-libera');
+        return { offline, libera, occupata: !offline && !libera };
+    }
+
+    function applicaStato(card, isOnline, isLibera) {
+        card.classList.remove('stato-libera', 'stato-occupata', 'stato-offline');
+        const dot   = card.querySelector('.status-dot');
+        const badge = card.querySelector('.presa-badge');
+        if (!isOnline) {
+            card.classList.add('stato-offline');
+            if (dot)   { dot.className   = 'status-dot gray'; }
+            if (badge) { badge.className = 'presa-badge offline'; badge.textContent = 'Offline'; }
+        } else if (isLibera) {
+            card.classList.add('stato-libera');
+            if (dot)   { dot.className   = 'status-dot green'; }
+            if (badge) { badge.className = 'presa-badge libera'; badge.textContent = 'Disponibile'; }
+        } else {
+            card.classList.add('stato-occupata');
+            if (dot)   { dot.className   = 'status-dot red'; }
+            if (badge) { badge.className = 'presa-badge occupata'; badge.textContent = 'In uso'; }
+        }
+
+        // Bottone "Scegli": deve esserci solo se online + libera.
+        const idPunto = card.getAttribute('data-id-punto');
+        let btn = card.querySelector('.scegli-btn');
+        if (isOnline && isLibera) {
+            if (!btn) {
+                btn = document.createElement('button');
+                btn.className = 'scegli-btn';
+                btn.textContent = 'Scegli →';
+                btn.setAttribute('onclick', "apriInputCodice('" + idPunto + "')");
+                card.appendChild(btn);
+            }
+        } else if (btn) {
+            btn.remove();
+        }
+    }
+
+    function ricalcolaChips() {
+        const cards = document.querySelectorAll('.presa-card[data-id-punto]');
+        let totale = 0, libere = 0, inUso = 0;
+        cards.forEach((c) => {
+            totale++;
+            const s = statoLogico(c);
+            if (!s.offline && s.libera)   libere++;
+            if (!s.offline && s.occupata) inUso++;
+        });
+        const t = document.querySelector('[data-chip="totale"]');
+        const l = document.querySelector('[data-chip="libere"]');
+        const u = document.querySelector('[data-chip="in-uso"]');
+        if (t) t.textContent = totale;
+        if (l) l.textContent = libere;
+        if (u) u.textContent = inUso;
+    }
+
+    try {
+        window.Pusher = Pusher;
+        const _isHttps = window.location.protocol === 'https:';
+        window.Echo = window.Echo || new Echo({
+            broadcaster: 'reverb',
+            key: '{{ env("VITE_REVERB_APP_KEY") }}',
+            wsHost:  window.location.hostname,
+            wsPort:  _isHttps ? 443 : 80,
+            wssPort: 443,
+            forceTLS: _isHttps,
+            enabledTransports: ['ws', 'wss'],
+        });
+
+        const canale = window.Echo.channel('mappa');
+
+        canale.listen('.punto.status', (e) => {
+            if (e.id_stazione && e.id_stazione !== ID_STAZIONE_CORRENTE) return;
+            const card = selPresa(e.id_punto);
+            if (!card) return;
+            const isOnline = !card.classList.contains('stato-offline');
+            applicaStato(card, isOnline, !!e.libera);
+            ricalcolaChips();
+        });
+
+        canale.listen('.punto.hardware.status', (e) => {
+            if (e.id_stazione && e.id_stazione !== ID_STAZIONE_CORRENTE) return;
+            const card = selPresa(e.id_punto);
+            if (!card) return;
+            const isOnline = e.stato_hardware === 'online';
+            // Manteniamo lo stato libera/occupata corrente quando torna online.
+            const s = statoLogico(card);
+            const isLibera = isOnline ? (s.libera || (!s.libera && !s.occupata)) : false;
+            applicaStato(card, isOnline, isLibera);
+            ricalcolaChips();
+        });
+
+        // stazione.status aggregato: non c'e' nulla di visivo da cambiare a livello pagina
+        // (il colore del marker e' affare della mappa). Lo ignoriamo qui.
+    } catch (err) {
+        console.error('[Echo] StationDetail errore:', err);
+    }
+})();
 </script>
 @endsection
